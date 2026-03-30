@@ -9,18 +9,20 @@ import {
   Dimensions,
   FlatList,
   Platform,
+  Modal,
 } from "react-native";
 import * as ImagePicker from "expo-image-picker";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
 
-const { width } = Dimensions.get("window");
+const { width, height } = Dimensions.get("window");
 const COLUMN_COUNT = 2;
 const IMAGE_MARGIN = 10;
 const IMAGE_WIDTH = (width - IMAGE_MARGIN * (COLUMN_COUNT + 1)) / COLUMN_COUNT;
 
 export default function DreamScreen() {
   const [photos, setPhotos] = useState([]);
+  const [expandedPhoto, setExpandedPhoto] = useState(null);
 
   useEffect(() => {
     loadPhotos();
@@ -95,9 +97,40 @@ export default function DreamScreen() {
           const updatedPhotos = photos.filter((photo) => photo.id !== id);
           setPhotos(updatedPhotos);
           savePhotos(updatedPhotos);
+          setExpandedPhoto(null); // Close the modal after removing
         },
       },
     ]);
+  };
+
+  const movePhotoUp = (id) => {
+    const index = photos.findIndex((photo) => photo.id === id);
+    if (index > 0) {
+      const updatedPhotos = [...photos];
+      [updatedPhotos[index - 1], updatedPhotos[index]] = [
+        updatedPhotos[index],
+        updatedPhotos[index - 1],
+      ];
+      setPhotos(updatedPhotos);
+      savePhotos(updatedPhotos);
+      // Update the expanded photo to reflect the new index
+      setExpandedPhoto(updatedPhotos[index - 1]);
+    }
+  };
+
+  const movePhotoDown = (id) => {
+    const index = photos.findIndex((photo) => photo.id === id);
+    if (index < photos.length - 1) {
+      const updatedPhotos = [...photos];
+      [updatedPhotos[index + 1], updatedPhotos[index]] = [
+        updatedPhotos[index],
+        updatedPhotos[index + 1],
+      ];
+      setPhotos(updatedPhotos);
+      savePhotos(updatedPhotos);
+      // Update the expanded photo to reflect the new index
+      setExpandedPhoto(updatedPhotos[index + 1]);
+    }
   };
 
   const calculateImageHeight = (photo) => {
@@ -112,6 +145,7 @@ export default function DreamScreen() {
         styles.photoContainer,
         { marginLeft: index % 2 === 0 ? 0 : IMAGE_MARGIN },
       ]}
+      onPress={() => setExpandedPhoto(item)}
     >
       <Image
         source={{ uri: item.uri }}
@@ -123,12 +157,6 @@ export default function DreamScreen() {
           },
         ]}
       />
-      <TouchableOpacity
-        style={styles.removeButton}
-        onPress={() => removePhoto(item.id)}
-      >
-        <Ionicons name="close-circle" size={28} color="#fff" />
-      </TouchableOpacity>
     </TouchableOpacity>
   );
 
@@ -159,6 +187,93 @@ export default function DreamScreen() {
           showsVerticalScrollIndicator={false}
         />
       )}
+
+      {/* Expanded Photo Modal */}
+      <Modal
+        visible={expandedPhoto !== null}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setExpandedPhoto(null)}
+      >
+        <View style={styles.modalContainer}>
+          <TouchableOpacity
+            style={styles.modalBackdrop}
+            activeOpacity={1}
+            onPress={() => setExpandedPhoto(null)}
+          >
+            <View style={styles.expandedPhotoContainer}>
+              {expandedPhoto && (
+                <>
+                  <Image
+                    source={{ uri: expandedPhoto.uri }}
+                    style={styles.expandedPhoto}
+                    resizeMode="contain"
+                  />
+                  <View style={styles.photoControls}>
+                    <TouchableOpacity
+                      style={styles.controlButton}
+                      onPress={(e) => {
+                        e.stopPropagation();
+                        movePhotoUp(expandedPhoto.id);
+                      }}
+                      disabled={
+                        photos.findIndex((p) => p.id === expandedPhoto.id) === 0
+                      }
+                    >
+                      <Ionicons
+                        name="arrow-up-circle"
+                        size={48}
+                        color={
+                          photos.findIndex((p) => p.id === expandedPhoto.id) ===
+                          0
+                            ? "#666"
+                            : "#fff"
+                        }
+                      />
+                      <Text style={styles.controlButtonText}>Up</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={styles.controlButton}
+                      onPress={(e) => {
+                        e.stopPropagation();
+                        removePhoto(expandedPhoto.id);
+                      }}
+                    >
+                      <Ionicons name="trash" size={48} color="#ff4444" />
+                      <Text style={styles.controlButtonText}>Remove</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={styles.controlButton}
+                      onPress={(e) => {
+                        e.stopPropagation();
+                        movePhotoDown(expandedPhoto.id);
+                      }}
+                      disabled={
+                        photos.findIndex((p) => p.id === expandedPhoto.id) ===
+                        photos.length - 1
+                      }
+                    >
+                      <Ionicons
+                        name="arrow-down-circle"
+                        size={48}
+                        color={
+                          photos.findIndex((p) => p.id === expandedPhoto.id) ===
+                          photos.length - 1
+                            ? "#666"
+                            : "#fff"
+                        }
+                      />
+                      <Text style={styles.controlButtonText}>Down</Text>
+                    </TouchableOpacity>
+                  </View>
+                </>
+              )}
+            </View>
+          </TouchableOpacity>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -225,11 +340,41 @@ const styles = StyleSheet.create({
   photo: {
     resizeMode: "cover",
   },
-  removeButton: {
-    position: "absolute",
-    top: 8,
-    right: 8,
-    backgroundColor: "rgba(0, 0, 0, 0.5)",
-    borderRadius: 14,
+  modalContainer: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.95)",
+  },
+  modalBackdrop: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  expandedPhotoContainer: {
+    width: width,
+    height: height,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  expandedPhoto: {
+    width: width,
+    height: height * 0.7,
+  },
+  photoControls: {
+    flexDirection: "row",
+    justifyContent: "space-around",
+    alignItems: "center",
+    width: width * 0.8,
+    marginTop: 40,
+  },
+  controlButton: {
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 10,
+  },
+  controlButtonText: {
+    color: "#fff",
+    fontSize: 14,
+    marginTop: 8,
+    fontWeight: "600",
   },
 });
