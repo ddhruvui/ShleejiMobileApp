@@ -35,7 +35,7 @@ export default function App() {
             paddingBottom: 10,
             paddingTop: 10,
           },
-          tabBarActiveTintColor: "#6200ee",
+          tabBarActiveTintColor: "#1e88e5",
           tabBarInactiveTintColor: "#888",
           tabBarLabelStyle: {
             fontSize: 12,

@@ -273,6 +273,18 @@ export default function TodoScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
+      {/* Title bar - Fixed Header */}
+      <View style={styles.titleBar}>
+        <Text style={styles.title}>Task At Hand</Text>
+        <TouchableOpacity
+          style={styles.addHeaderBtn}
+          onPress={() => setHeaderModalState({ mode: "add" })}
+          activeOpacity={0.7}
+        >
+          <Text style={styles.addHeaderText}>+ Add Header</Text>
+        </TouchableOpacity>
+      </View>
+
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
@@ -280,22 +292,10 @@ export default function TodoScreen() {
           <RefreshControl
             refreshing={refreshing}
             onRefresh={onRefresh}
-            tintColor="#6200ee"
+            tintColor="#fff"
           />
         }
       >
-        {/* Title bar */}
-        <View style={styles.titleBar}>
-          <Text style={styles.title}>Task At Hand</Text>
-          <TouchableOpacity
-            style={styles.addHeaderBtn}
-            onPress={() => setHeaderModalState({ mode: "add" })}
-          >
-            <Ionicons name="add" size={18} color="#6200ee" />
-            <Text style={styles.addHeaderText}>Add Header</Text>
-          </TouchableOpacity>
-        </View>
-
         {actionError && (
           <View style={styles.actionErrorBar}>
             <Text style={styles.actionErrorText}>
@@ -456,7 +456,7 @@ export default function TodoScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#fff",
+    backgroundColor: "#f0f2f5",
   },
   centered: {
     flex: 1,
@@ -503,29 +503,31 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 20,
-    paddingTop: 48,
+    paddingHorizontal: 24,
+    paddingTop: 54,
+    paddingBottom: 28,
+    backgroundColor: "#1e88e5",
+    elevation: 6,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
   },
   title: {
-    fontSize: 28,
+    fontSize: 32,
     fontWeight: "800",
-    color: "#1f2328",
+    color: "#fff",
   },
   addHeaderBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    paddingVertical: 8,
-    paddingHorizontal: 14,
+    backgroundColor: "#fff",
+    paddingVertical: 12,
+    paddingHorizontal: 24,
     borderRadius: 8,
-    borderWidth: 1,
-    borderColor: "#d0d7de",
-    backgroundColor: "#f6f8fa",
   },
   addHeaderText: {
     fontSize: 14,
-    fontWeight: "600",
-    color: "#6200ee",
+    fontWeight: "700",
+    color: "#1e88e5",
   },
   actionErrorBar: {
     flexDirection: "row",

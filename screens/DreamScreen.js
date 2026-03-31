@@ -164,8 +164,12 @@ export default function DreamScreen() {
     <View style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.title}>Dream Board</Text>
-        <TouchableOpacity style={styles.addButton} onPress={pickImage}>
-          <Ionicons name="add-circle" size={32} color="#6200ee" />
+        <TouchableOpacity
+          style={styles.addButton}
+          onPress={pickImage}
+          activeOpacity={0.7}
+        >
+          <Text style={styles.addButtonText}>+ Add</Text>
         </TouchableOpacity>
       </View>
 
@@ -281,26 +285,39 @@ export default function DreamScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#f5f5f5",
+    backgroundColor: "#f0f2f5",
   },
   header: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingHorizontal: 20,
-    paddingTop: 60,
-    paddingBottom: 20,
-    backgroundColor: "#fff",
-    borderBottomWidth: 1,
-    borderBottomColor: "#eee",
+    paddingHorizontal: 24,
+    paddingTop: 54,
+    paddingBottom: 28,
+    backgroundColor: "#1e88e5",
+    elevation: 6,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
   },
   title: {
     fontSize: 32,
-    fontWeight: "bold",
-    color: "#333",
+    fontWeight: "800",
+    color: "#fff",
   },
   addButton: {
-    padding: 5,
+    backgroundColor: "#fff",
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 8,
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  addButtonText: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#1e88e5",
   },
   emptyContainer: {
     flex: 1,

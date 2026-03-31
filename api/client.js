@@ -1,12 +1,11 @@
 /**
  * Base HTTP client for the TaskAtHand API.
- * Base URL: http://localhost:3002
+ * Base URL: https://taskathandbe.onrender.com
  */
 
 import { Platform } from "react-native";
 
-const BASE_URL =
-  Platform.OS === "android" ? "http://10.0.2.2:3002" : "http://localhost:3002";
+const BASE_URL = "https://taskathandbe.onrender.com";
 
 export async function apiFetch(path, options = {}) {
   const res = await fetch(`${BASE_URL}${path}`, {
