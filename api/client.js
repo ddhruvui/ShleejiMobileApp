@@ -1,6 +1,7 @@
 /**
  * Base HTTP client for the TaskAtHand API.
  * Base URL: https://taskathandbe.onrender.com
+ * For local use - http://10.0.2.2:3002
  */
 
 import { Platform } from "react-native";

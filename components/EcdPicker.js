@@ -1,11 +1,13 @@
-import React from "react";
+import React, { useState } from "react";
 import {
   View,
   Text,
   TextInput,
   TouchableOpacity,
   StyleSheet,
+  Platform,
 } from "react-native";
+import DateTimePicker from "@react-native-community/datetimepicker";
 
 const DOW_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const ECD_MODES = ["none", "date", "week", "month", "year"];
@@ -42,6 +44,73 @@ export default function EcdPicker({
   yearVal,
   setYearVal,
 }) {
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [showYearPicker, setShowYearPicker] = useState(false);
+
+  // Parse dateVal string to Date object for date picker
+  const getDateForPicker = () => {
+    if (dateVal && /^\d{4}-\d{2}-\d{2}$/.test(dateVal)) {
+      return new Date(dateVal + "T00:00:00");
+    }
+    return new Date();
+  };
+
+  // Parse yearVal string (D/M/YYYY) to Date object
+  const getYearDateForPicker = () => {
+    if (yearVal && /^\d{1,2}\/\d{1,2}\/\d{4}$/.test(yearVal)) {
+      const parts = yearVal.split("/");
+      const day = parseInt(parts[0], 10);
+      const month = parseInt(parts[1], 10) - 1; // JS months are 0-indexed
+      const year = parseInt(parts[2], 10);
+      return new Date(year, month, day);
+    }
+    return new Date();
+  };
+
+  // Format Date to YYYY-MM-DD
+  const formatDateToISO = (date) => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  };
+
+  // Format Date to D/M/YYYY
+  const formatDateToDMY = (date) => {
+    const day = date.getDate();
+    const month = date.getMonth() + 1;
+    const year = date.getFullYear();
+    return `${day}/${month}/${year}`;
+  };
+
+  const onDateChange = (event, selectedDate) => {
+    if (Platform.OS === "android") {
+      setShowDatePicker(false);
+    }
+    if (event.type === "set" && selectedDate) {
+      setDateVal(formatDateToISO(selectedDate));
+      if (Platform.OS === "ios") {
+        setShowDatePicker(false);
+      }
+    } else if (event.type === "dismissed") {
+      setShowDatePicker(false);
+    }
+  };
+
+  const onYearDateChange = (event, selectedDate) => {
+    if (Platform.OS === "android") {
+      setShowYearPicker(false);
+    }
+    if (event.type === "set" && selectedDate) {
+      setYearVal(formatDateToDMY(selectedDate));
+      if (Platform.OS === "ios") {
+        setShowYearPicker(false);
+      }
+    } else if (event.type === "dismissed") {
+      setShowYearPicker(false);
+    }
+  };
+
   return (
     <View style={styles.container}>
       <Text style={styles.label}>Due</Text>
@@ -65,13 +134,25 @@ export default function EcdPicker({
       </View>
 
       {mode === "date" && (
-        <TextInput
-          style={styles.dateInput}
-          value={dateVal}
-          onChangeText={setDateVal}
-          placeholder="YYYY-MM-DD"
-          placeholderTextColor="#999"
-        />
+        <View>
+          <TouchableOpacity
+            style={styles.dateSelectorBtn}
+            onPress={() => setShowDatePicker(true)}
+          >
+            <Text style={styles.dateSelectorText}>
+              {dateVal || "Select Date"}
+            </Text>
+            <Text style={styles.calendarIcon}>📅</Text>
+          </TouchableOpacity>
+          {showDatePicker && (
+            <DateTimePicker
+              value={getDateForPicker()}
+              mode="date"
+              display={Platform.OS === "ios" ? "spinner" : "default"}
+              onChange={onDateChange}
+            />
+          )}
+        </View>
       )}
 
       {mode === "week" && (
@@ -120,13 +201,25 @@ export default function EcdPicker({
       )}
 
       {mode === "year" && (
-        <TextInput
-          style={styles.dateInput}
-          value={yearVal}
-          onChangeText={setYearVal}
-          placeholder="D/M/YYYY (e.g., 25/12/2026)"
-          placeholderTextColor="#999"
-        />
+        <View>
+          <TouchableOpacity
+            style={styles.dateSelectorBtn}
+            onPress={() => setShowYearPicker(true)}
+          >
+            <Text style={styles.dateSelectorText}>
+              {yearVal || "Select Date"}
+            </Text>
+            <Text style={styles.calendarIcon}>📅</Text>
+          </TouchableOpacity>
+          {showYearPicker && (
+            <DateTimePicker
+              value={getYearDateForPicker()}
+              mode="date"
+              display={Platform.OS === "ios" ? "spinner" : "default"}
+              onChange={onYearDateChange}
+            />
+          )}
+        </View>
       )}
 
       {/* Hint text */}
@@ -198,6 +291,27 @@ const styles = StyleSheet.create({
     color: "#1f2328",
     backgroundColor: "#fafafa",
     marginBottom: 8,
+  },
+  dateSelectorBtn: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "#d0d7de",
+    borderRadius: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    backgroundColor: "#fafafa",
+    marginBottom: 8,
+  },
+  dateSelectorText: {
+    fontSize: 15,
+    color: "#1f2328",
+    flex: 1,
+  },
+  calendarIcon: {
+    fontSize: 20,
+    marginLeft: 8,
   },
   dowRow: {
     flexDirection: "row",
