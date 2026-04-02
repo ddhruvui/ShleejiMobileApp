@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import {
   StyleSheet,
   View,
@@ -7,7 +7,7 @@ import {
   Image,
   Alert,
   Dimensions,
-  FlatList,
+  ScrollView,
   Platform,
   Modal,
 } from "react-native";
@@ -17,8 +17,10 @@ import { Ionicons } from "@expo/vector-icons";
 
 const { width, height } = Dimensions.get("window");
 const COLUMN_COUNT = 2;
-const IMAGE_MARGIN = 10;
-const IMAGE_WIDTH = (width - IMAGE_MARGIN * (COLUMN_COUNT + 1)) / COLUMN_COUNT;
+const GAP = 8;
+const PADDING = 8;
+const IMAGE_WIDTH =
+  (width - PADDING * 2 - GAP * (COLUMN_COUNT - 1)) / COLUMN_COUNT;
 
 export default function DreamScreen() {
   const [photos, setPhotos] = useState([]);
@@ -138,13 +140,32 @@ export default function DreamScreen() {
     return IMAGE_WIDTH * aspectRatio;
   };
 
-  const renderPhoto = ({ item, index }) => (
+  // Distribute photos into two columns for masonry layout (greedy shortest-column-first)
+  const { leftColumn, rightColumn } = useMemo(() => {
+    const left = [];
+    const right = [];
+    let leftHeight = 0;
+    let rightHeight = 0;
+
+    photos.forEach((photo) => {
+      const cardHeight = calculateImageHeight(photo) + GAP; // image height + gap between cards
+      if (leftHeight <= rightHeight) {
+        left.push(photo);
+        leftHeight += cardHeight;
+      } else {
+        right.push(photo);
+        rightHeight += cardHeight;
+      }
+    });
+
+    return { leftColumn: left, rightColumn: right };
+  }, [photos]);
+
+  const renderPhoto = (item) => (
     <TouchableOpacity
+      key={item.id.toString()}
       activeOpacity={0.9}
-      style={[
-        styles.photoContainer,
-        { marginLeft: index % 2 === 0 ? 0 : IMAGE_MARGIN },
-      ]}
+      style={styles.photoContainer}
       onPress={() => setExpandedPhoto(item)}
     >
       <Image
@@ -152,7 +173,7 @@ export default function DreamScreen() {
         style={[
           styles.photo,
           {
-            width: IMAGE_WIDTH,
+            width: "100%",
             height: calculateImageHeight(item),
           },
         ]}
@@ -182,14 +203,20 @@ export default function DreamScreen() {
           </Text>
         </View>
       ) : (
-        <FlatList
-          data={photos}
-          renderItem={renderPhoto}
-          keyExtractor={(item) => item.id.toString()}
-          numColumns={COLUMN_COUNT}
+        <ScrollView
           contentContainerStyle={styles.photosGrid}
           showsVerticalScrollIndicator={false}
-        />
+        >
+          <View style={styles.masonryContainer}>
+            <View style={styles.masonryColumn}>
+              {leftColumn.map(renderPhoto)}
+            </View>
+            <View style={{ width: GAP }} />
+            <View style={styles.masonryColumn}>
+              {rightColumn.map(renderPhoto)}
+            </View>
+          </View>
+        </ScrollView>
       )}
 
       {/* Expanded Photo Modal */}
@@ -337,11 +364,19 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   photosGrid: {
-    padding: IMAGE_MARGIN,
+    paddingHorizontal: PADDING,
+    paddingTop: PADDING,
     paddingBottom: 120,
   },
+  masonryContainer: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+  },
+  masonryColumn: {
+    flex: 1,
+  },
   photoContainer: {
-    margin: IMAGE_MARGIN / 2,
+    marginBottom: GAP,
     borderRadius: 12,
     overflow: "hidden",
     backgroundColor: "#fff",
