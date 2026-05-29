@@ -4,6 +4,62 @@
 
 const DOW_VALUES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
+const DOW_BY_JS_INDEX = [
+  "Sun",
+  "Mon",
+  "Tue",
+  "Wed",
+  "Thu",
+  "Fri",
+  "Sat",
+];
+
+/**
+ * Returns true if the task's ECD matches today's date, day of week,
+ * day of month, or day of year.
+ */
+export function isTaskDueToday(ecd) {
+  if (!ecd) return false;
+  const now = new Date();
+  switch (ecd.type) {
+    case "date": {
+      const y = now.getFullYear();
+      const m = String(now.getMonth() + 1).padStart(2, "0");
+      const d = String(now.getDate()).padStart(2, "0");
+      return ecd.value === `${y}-${m}-${d}`;
+    }
+    case "day_of_week":
+      return ecd.value.includes(DOW_BY_JS_INDEX[now.getDay()]);
+    case "day_of_month":
+      return ecd.value.includes(now.getDate());
+    case "day_of_year": {
+      const todayDOY = `${now.getDate()}/${now.getMonth() + 1}/${now.getFullYear()}`;
+      return ecd.value === todayDOY;
+    }
+    default:
+      return false;
+  }
+}
+
+/**
+ * Returns true if the task's ECD is in the past and not a yearly event.
+ * This includes past dates, but excludes day_of_week, day_of_month, and day_of_year.
+ */
+export function isTaskPast(ecd) {
+  if (!ecd) return false;
+  const now = new Date();
+
+  // Only show past dates; exclude recurring patterns (week, month, year)
+  if (ecd.type === "date") {
+    return (
+      ecd.value <
+      `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`
+    );
+  }
+
+  return false;
+}
+
 export function isValidYearDate(value) {
   return /^\d{1,2}\/\d{1,2}\/\d{4}$/.test(value.trim());
 }

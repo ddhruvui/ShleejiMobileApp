@@ -16,6 +16,7 @@ import TaskCard from "../components/TaskCard";
 import ConfirmModal from "../components/ConfirmModal";
 import AddTaskModal from "../components/AddTaskModal";
 import HeaderModal from "../components/HeaderModal";
+import { isTaskDueToday, isTaskPast } from "../utils/ecd";
 
 export default function TodoScreen() {
   const [headers, setHeaders] = useState([]);
@@ -23,6 +24,8 @@ export default function TodoScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
   const [actionError, setActionError] = useState(null);
+  const [focusMode, setFocusMode] = useState(false);
+  const [pastMode, setPastMode] = useState(false);
 
   // Modal states
   const [deleteTarget, setDeleteTarget] = useState(null);
@@ -285,6 +288,54 @@ export default function TodoScreen() {
         </TouchableOpacity>
       </View>
 
+      {/* Filter navbar */}
+      <View style={styles.filterBar}>
+        <TouchableOpacity
+          style={[
+            styles.toggleBtn,
+            focusMode && styles.toggleBtnActive,
+          ]}
+          onPress={() => setFocusMode((prev) => !prev)}
+          activeOpacity={0.7}
+        >
+          <Ionicons
+            name="radio-button-on-outline"
+            size={16}
+            color={focusMode ? "#1e88e5" : "#656d76"}
+          />
+          <Text
+            style={[
+              styles.toggleText,
+              focusMode && styles.toggleTextActive,
+            ]}
+          >
+            Focus
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[
+            styles.toggleBtn,
+            pastMode && styles.toggleBtnActive,
+          ]}
+          onPress={() => setPastMode((prev) => !prev)}
+          activeOpacity={0.7}
+        >
+          <Ionicons
+            name="time-outline"
+            size={16}
+            color={pastMode ? "#1e88e5" : "#656d76"}
+          />
+          <Text
+            style={[
+              styles.toggleText,
+              pastMode && styles.toggleTextActive,
+            ]}
+          >
+            Past
+          </Text>
+        </TouchableOpacity>
+      </View>
+
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
@@ -308,109 +359,146 @@ export default function TodoScreen() {
         )}
 
         {/* Headers */}
-        {headers.map((header, idx) => (
-          <View key={header._id} style={styles.section}>
-            {/* Header heading */}
-            <View style={styles.headerRow}>
-              <Text style={styles.headerName} numberOfLines={1}>
-                {header.name}
-              </Text>
-              <View style={styles.headerActions}>
-                <TouchableOpacity
-                  style={[
-                    styles.headerBtn,
-                    idx === 0 && styles.headerBtnDisabled,
-                  ]}
-                  onPress={() => handleMoveHeaderUp(header._id)}
-                  disabled={idx === 0}
-                >
-                  <Ionicons
-                    name="arrow-up"
-                    size={16}
-                    color={idx === 0 ? "#ccc" : "#656d76"}
+        {headers.map((header, idx) => {
+          let visibleTasks = header.tasks;
+
+          if (focusMode && pastMode) {
+            visibleTasks = visibleTasks.filter(
+              (t) => isTaskDueToday(t.ecd) || isTaskPast(t.ecd),
+            );
+          } else if (focusMode) {
+            visibleTasks = visibleTasks.filter((t) => isTaskDueToday(t.ecd));
+          } else if (pastMode) {
+            visibleTasks = visibleTasks.filter((t) => isTaskPast(t.ecd));
+          }
+
+          if ((focusMode || pastMode) && visibleTasks.length === 0) return null;
+
+          return (
+            <View key={header._id} style={styles.section}>
+              {/* Header heading */}
+              <View style={styles.headerRow}>
+                <Text style={styles.headerName} numberOfLines={1}>
+                  {header.name}
+                </Text>
+                <View style={styles.headerActions}>
+                  <TouchableOpacity
+                    style={[
+                      styles.headerBtn,
+                      idx === 0 && styles.headerBtnDisabled,
+                    ]}
+                    onPress={() => handleMoveHeaderUp(header._id)}
+                    disabled={idx === 0}
+                  >
+                    <Ionicons
+                      name="arrow-up"
+                      size={16}
+                      color={idx === 0 ? "#ccc" : "#656d76"}
+                    />
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[
+                      styles.headerBtn,
+                      idx === headers.length - 1 && styles.headerBtnDisabled,
+                    ]}
+                    onPress={() => handleMoveHeaderDown(header._id)}
+                    disabled={idx === headers.length - 1}
+                  >
+                    <Ionicons
+                      name="arrow-down"
+                      size={16}
+                      color={idx === headers.length - 1 ? "#ccc" : "#656d76"}
+                    />
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.headerBtn}
+                    onPress={() =>
+                      setHeaderModalState({
+                        mode: "edit",
+                        headerId: header._id,
+                        name: header.name,
+                      })
+                    }
+                  >
+                    <Ionicons name="pencil" size={16} color="#656d76" />
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.headerBtn}
+                    onPress={() =>
+                      setDeleteTarget({
+                        type: "header",
+                        headerId: header._id,
+                        id: header._id,
+                        name: header.name,
+                      })
+                    }
+                  >
+                    <Ionicons name="trash-outline" size={16} color="#e74c3c" />
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.headerBtn}
+                    onPress={() => setAddTaskHeaderId(header._id)}
+                  >
+                    <Ionicons name="add" size={18} color="#6200ee" />
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              {/* Task list */}
+              <View style={styles.taskList}>
+                {visibleTasks.map((task, taskIdx) => (
+                  <TaskCard
+                    key={task._id}
+                    task={task}
+                    isFirst={taskIdx === 0}
+                    isLast={taskIdx === visibleTasks.length - 1}
+                    prevTaskDone={
+                      taskIdx > 0 ? visibleTasks[taskIdx - 1].done : undefined
+                    }
+                    nextTaskDone={
+                      taskIdx < visibleTasks.length - 1
+                        ? visibleTasks[taskIdx + 1].done
+                        : undefined
+                    }
+                    onToggleDone={handleToggleDone(header._id)}
+                    onEdit={handleEditTask(header._id)}
+                    onMoveUp={handleMoveTaskUp(header._id)}
+                    onMoveDown={handleMoveTaskDown(header._id)}
+                    onDelete={handleDeleteTask(header._id)}
                   />
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[
-                    styles.headerBtn,
-                    idx === headers.length - 1 && styles.headerBtnDisabled,
-                  ]}
-                  onPress={() => handleMoveHeaderDown(header._id)}
-                  disabled={idx === headers.length - 1}
-                >
-                  <Ionicons
-                    name="arrow-down"
-                    size={16}
-                    color={idx === headers.length - 1 ? "#ccc" : "#656d76"}
-                  />
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.headerBtn}
-                  onPress={() =>
-                    setHeaderModalState({
-                      mode: "edit",
-                      headerId: header._id,
-                      name: header.name,
-                    })
-                  }
-                >
-                  <Ionicons name="pencil" size={16} color="#656d76" />
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.headerBtn}
-                  onPress={() =>
-                    setDeleteTarget({
-                      type: "header",
-                      headerId: header._id,
-                      id: header._id,
-                      name: header.name,
-                    })
-                  }
-                >
-                  <Ionicons name="trash-outline" size={16} color="#e74c3c" />
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.headerBtn}
-                  onPress={() => setAddTaskHeaderId(header._id)}
-                >
-                  <Ionicons name="add" size={18} color="#6200ee" />
-                </TouchableOpacity>
+                ))}
+                {visibleTasks.length === 0 && (
+                  <Text style={styles.emptyText}>No tasks yet — add one!</Text>
+                )}
               </View>
             </View>
-
-            {/* Task list */}
-            <View style={styles.taskList}>
-              {header.tasks.map((task, taskIdx) => (
-                <TaskCard
-                  key={task._id}
-                  task={task}
-                  isFirst={taskIdx === 0}
-                  isLast={taskIdx === header.tasks.length - 1}
-                  prevTaskDone={
-                    taskIdx > 0 ? header.tasks[taskIdx - 1].done : undefined
-                  }
-                  nextTaskDone={
-                    taskIdx < header.tasks.length - 1
-                      ? header.tasks[taskIdx + 1].done
-                      : undefined
-                  }
-                  onToggleDone={handleToggleDone(header._id)}
-                  onEdit={handleEditTask(header._id)}
-                  onMoveUp={handleMoveTaskUp(header._id)}
-                  onMoveDown={handleMoveTaskDown(header._id)}
-                  onDelete={handleDeleteTask(header._id)}
-                />
-              ))}
-              {header.tasks.length === 0 && (
-                <Text style={styles.emptyText}>No tasks yet — add one!</Text>
-              )}
-            </View>
-          </View>
-        ))}
+          );
+        })}
 
         {headers.length === 0 && (
           <Text style={styles.emptyText}>No headers yet — add one!</Text>
         )}
+        {focusMode &&
+          pastMode &&
+          headers.length > 0 &&
+          headers.every(
+            (h) =>
+              !h.tasks.some((t) => isTaskDueToday(t.ecd) || isTaskPast(t.ecd)),
+          ) && (
+            <Text style={styles.emptyText}>No tasks due today or in the past.</Text>
+          )}
+        {focusMode &&
+          !pastMode &&
+          headers.length > 0 &&
+          headers.every((h) => !h.tasks.some((t) => isTaskDueToday(t.ecd))) && (
+            <Text style={styles.emptyText}>No tasks due today.</Text>
+          )}
+        {!focusMode &&
+          pastMode &&
+          headers.length > 0 &&
+          headers.every((h) => !h.tasks.some((t) => isTaskPast(t.ecd))) && (
+            <Text style={styles.emptyText}>No past tasks.</Text>
+          )}
 
         {/* Bottom spacer for tab bar */}
         <View style={{ height: 120 }} />
@@ -517,6 +605,38 @@ const styles = StyleSheet.create({
     fontSize: 32,
     fontWeight: "800",
     color: "#fff",
+  },
+  filterBar: {
+    flexDirection: "row",
+    gap: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: "#fff",
+    borderBottomWidth: 1,
+    borderBottomColor: "#eaeef2",
+  },
+  toggleBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "#f6f8fa",
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#d0d7de",
+  },
+  toggleBtnActive: {
+    backgroundColor: "#e3f2fd",
+    borderColor: "#1e88e5",
+  },
+  toggleText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#656d76",
+  },
+  toggleTextActive: {
+    color: "#1e88e5",
   },
   addHeaderBtn: {
     backgroundColor: "#fff",
