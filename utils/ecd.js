@@ -60,6 +60,52 @@ export function isTaskPast(ecd) {
   return false;
 }
 
+/**
+ * Resolves a task's ECD to a concrete calendar date key (YYYY-MM-DD) used to
+ * group tasks in the By Date view. Fixed dates and yearly dates resolve to a
+ * single day; recurring weekly/monthly patterns and undated tasks return null
+ * because they have no single calendar date.
+ */
+export function getEcdDateKey(ecd) {
+  if (!ecd) return null;
+  if (ecd.type === "date") return ecd.value; // already YYYY-MM-DD
+  if (ecd.type === "day_of_year") {
+    // value is D/M/YYYY
+    const m = ecd.value.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if (!m) return null;
+    const [, d, mo, y] = m;
+    return `${y}-${mo.padStart(2, "0")}-${d.padStart(2, "0")}`;
+  }
+  return null;
+}
+
+/**
+ * Formats a YYYY-MM-DD key into a readable heading, e.g. "Fri, Jun 26, 2026".
+ * Parsed from components to avoid timezone shifts.
+ */
+export function formatDateKey(key) {
+  const [y, mo, d] = key.split("-").map((n) => parseInt(n, 10));
+  const date = new Date(y, mo - 1, d);
+  const weekday = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][
+    date.getDay()
+  ];
+  const month = [
+    "Jan",
+    "Feb",
+    "Mar",
+    "Apr",
+    "May",
+    "Jun",
+    "Jul",
+    "Aug",
+    "Sep",
+    "Oct",
+    "Nov",
+    "Dec",
+  ][mo - 1];
+  return `${weekday}, ${month} ${d}, ${y}`;
+}
+
 export function isValidYearDate(value) {
   return /^\d{1,2}\/\d{1,2}\/\d{4}$/.test(value.trim());
 }

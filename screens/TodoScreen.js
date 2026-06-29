@@ -16,7 +16,12 @@ import TaskCard from "../components/TaskCard";
 import ConfirmModal from "../components/ConfirmModal";
 import AddTaskModal from "../components/AddTaskModal";
 import HeaderModal from "../components/HeaderModal";
-import { isTaskDueToday, isTaskPast } from "../utils/ecd";
+import {
+  isTaskDueToday,
+  isTaskPast,
+  getEcdDateKey,
+  formatDateKey,
+} from "../utils/ecd";
 
 export default function TodoScreen() {
   const [headers, setHeaders] = useState([]);
@@ -26,6 +31,7 @@ export default function TodoScreen() {
   const [actionError, setActionError] = useState(null);
   const [focusMode, setFocusMode] = useState(false);
   const [pastMode, setPastMode] = useState(false);
+  const [byDateMode, setByDateMode] = useState(false);
 
   // Modal states
   const [deleteTarget, setDeleteTarget] = useState(null);
@@ -248,6 +254,59 @@ export default function TodoScreen() {
 
   const addTaskHeader = headers.find((h) => h._id === addTaskHeaderId);
 
+  /* ── Shared Focus/Past filter (applies in both views) ── */
+  const matchesFilter = (task) => {
+    if (focusMode && pastMode)
+      return isTaskDueToday(task.ecd) || isTaskPast(task.ecd);
+    if (focusMode) return isTaskDueToday(task.ecd);
+    if (pastMode) return isTaskPast(task.ecd);
+    return true;
+  };
+
+  /* ── By Date view: group filtered tasks by their calendar date ── */
+  const byDateGroups = (() => {
+    if (!byDateMode) return [];
+    const groups = new Map();
+    const noDate = [];
+    headers.forEach((header) => {
+      header.tasks.forEach((task) => {
+        if (task.done) return; // drop done tasks before grouping by date
+        if (!matchesFilter(task)) return;
+        const key = getEcdDateKey(task.ecd);
+        if (!key) {
+          if (!task.ecd) noDate.push({ task, headerPriority: header.priority });
+          return; // recurring patterns have no single date; skip
+        }
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key).push({ task, headerPriority: header.priority });
+      });
+    });
+    const sortTasks = (items) =>
+      items
+        .sort(
+          (x, y) =>
+            x.headerPriority - y.headerPriority ||
+            x.task.priority - y.task.priority,
+        )
+        .map((item) => item.task);
+    const dated = [...groups.entries()]
+      .sort(([a], [b]) => a.localeCompare(b)) // ascending date
+      .map(([key, items]) => ({
+        key,
+        label: formatDateKey(key),
+        tasks: sortTasks(items),
+      }));
+    if (noDate.length > 0) {
+      // undated tasks always come last
+      dated.push({
+        key: "__no_date__",
+        label: "No date",
+        tasks: sortTasks(noDate),
+      });
+    }
+    return dated;
+  })();
+
   if (loading) {
     return (
       <SafeAreaView style={styles.container}>
@@ -334,6 +393,28 @@ export default function TodoScreen() {
             Past
           </Text>
         </TouchableOpacity>
+        <TouchableOpacity
+          style={[
+            styles.toggleBtn,
+            byDateMode && styles.toggleBtnActive,
+          ]}
+          onPress={() => setByDateMode((prev) => !prev)}
+          activeOpacity={0.7}
+        >
+          <Ionicons
+            name="calendar-outline"
+            size={16}
+            color={byDateMode ? "#1e88e5" : "#656d76"}
+          />
+          <Text
+            style={[
+              styles.toggleText,
+              byDateMode && styles.toggleTextActive,
+            ]}
+          >
+            By Date
+          </Text>
+        </TouchableOpacity>
       </View>
 
       <ScrollView
@@ -359,22 +440,14 @@ export default function TodoScreen() {
         )}
 
         {/* Headers */}
-        {headers.map((header, idx) => {
-          let visibleTasks = header.tasks;
+        {!byDateMode &&
+          headers.map((header, idx) => {
+            const visibleTasks = header.tasks.filter(matchesFilter);
 
-          if (focusMode && pastMode) {
-            visibleTasks = visibleTasks.filter(
-              (t) => isTaskDueToday(t.ecd) || isTaskPast(t.ecd),
-            );
-          } else if (focusMode) {
-            visibleTasks = visibleTasks.filter((t) => isTaskDueToday(t.ecd));
-          } else if (pastMode) {
-            visibleTasks = visibleTasks.filter((t) => isTaskPast(t.ecd));
-          }
+            if ((focusMode || pastMode) && visibleTasks.length === 0)
+              return null;
 
-          if ((focusMode || pastMode) && visibleTasks.length === 0) return null;
-
-          return (
+            return (
             <View key={header._id} style={styles.section}>
               {/* Header heading */}
               <View style={styles.headerRow}>
@@ -475,10 +548,11 @@ export default function TodoScreen() {
           );
         })}
 
-        {headers.length === 0 && (
+        {!byDateMode && headers.length === 0 && (
           <Text style={styles.emptyText}>No headers yet — add one!</Text>
         )}
-        {focusMode &&
+        {!byDateMode &&
+          focusMode &&
           pastMode &&
           headers.length > 0 &&
           headers.every(
@@ -487,18 +561,53 @@ export default function TodoScreen() {
           ) && (
             <Text style={styles.emptyText}>No tasks due today or in the past.</Text>
           )}
-        {focusMode &&
+        {!byDateMode &&
+          focusMode &&
           !pastMode &&
           headers.length > 0 &&
           headers.every((h) => !h.tasks.some((t) => isTaskDueToday(t.ecd))) && (
             <Text style={styles.emptyText}>No tasks due today.</Text>
           )}
-        {!focusMode &&
+        {!byDateMode &&
+          !focusMode &&
           pastMode &&
           headers.length > 0 &&
           headers.every((h) => !h.tasks.some((t) => isTaskPast(t.ecd))) && (
             <Text style={styles.emptyText}>No past tasks.</Text>
           )}
+
+        {/* By Date view: sections headed by date */}
+        {byDateMode &&
+          byDateGroups.map((group) => (
+            <View key={group.key} style={styles.section}>
+              <View style={styles.headerRow}>
+                <Text style={styles.headerName} numberOfLines={1}>
+                  {group.label}
+                </Text>
+              </View>
+              <View style={styles.taskList}>
+                {group.tasks.map((task) => (
+                  <TaskCard
+                    key={task._id}
+                    task={task}
+                    isFirst
+                    isLast
+                    onToggleDone={handleToggleDone(task.headerId)}
+                    onEdit={handleEditTask(task.headerId)}
+                    onMoveUp={handleMoveTaskUp(task.headerId)}
+                    onMoveDown={handleMoveTaskDown(task.headerId)}
+                    onDelete={handleDeleteTask(task.headerId)}
+                  />
+                ))}
+              </View>
+            </View>
+          ))}
+        {byDateMode && byDateGroups.length === 0 && (
+          <Text style={styles.emptyText}>
+            No dated tasks to show
+            {focusMode || pastMode ? " for this filter" : ""}.
+          </Text>
+        )}
 
         {/* Bottom spacer for tab bar */}
         <View style={{ height: 120 }} />
