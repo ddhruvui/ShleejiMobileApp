@@ -15,6 +15,17 @@ const DOW_BY_JS_INDEX = [
 ];
 
 /**
+ * Returns today's date as a YYYY-MM-DD key.
+ */
+function todayDateKey() {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, "0");
+  const d = String(now.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+/**
  * Returns true if the task's ECD matches today's date, day of week,
  * day of month, or day of year.
  */
@@ -22,12 +33,8 @@ export function isTaskDueToday(ecd) {
   if (!ecd) return false;
   const now = new Date();
   switch (ecd.type) {
-    case "date": {
-      const y = now.getFullYear();
-      const m = String(now.getMonth() + 1).padStart(2, "0");
-      const d = String(now.getDate()).padStart(2, "0");
-      return ecd.value === `${y}-${m}-${d}`;
-    }
+    case "date":
+      return ecd.value === todayDateKey();
     case "day_of_week":
       return ecd.value.includes(DOW_BY_JS_INDEX[now.getDay()]);
     case "day_of_month":
@@ -63,8 +70,9 @@ export function isTaskPast(ecd) {
 /**
  * Resolves a task's ECD to a concrete calendar date key (YYYY-MM-DD) used to
  * group tasks in the By Date view. Fixed dates and yearly dates resolve to a
- * single day; recurring weekly/monthly patterns and undated tasks return null
- * because they have no single calendar date.
+ * single day. Recurring weekly/monthly patterns have no single calendar date,
+ * so they resolve to today's date when due today and null otherwise. Undated
+ * tasks return null.
  */
 export function getEcdDateKey(ecd) {
   if (!ecd) return null;
@@ -75,6 +83,10 @@ export function getEcdDateKey(ecd) {
     if (!m) return null;
     const [, d, mo, y] = m;
     return `${y}-${mo.padStart(2, "0")}-${d.padStart(2, "0")}`;
+  }
+  // Recurring weekly/monthly patterns surface under today's date when due today.
+  if (ecd.type === "day_of_week" || ecd.type === "day_of_month") {
+    return isTaskDueToday(ecd) ? todayDateKey() : null;
   }
   return null;
 }
