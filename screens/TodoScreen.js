@@ -16,12 +16,14 @@ import TaskCard from "../components/TaskCard";
 import ConfirmModal from "../components/ConfirmModal";
 import AddTaskModal from "../components/AddTaskModal";
 import HeaderModal from "../components/HeaderModal";
+import InsightsSection from "../components/InsightsSection";
 import {
   isTaskDueToday,
   isTaskPast,
   getEcdDateKey,
   formatDateKey,
 } from "../utils/ecd";
+import { syncDailyReminders } from "../utils/notifications";
 
 export default function TodoScreen() {
   const [headers, setHeaders] = useState([]);
@@ -32,6 +34,7 @@ export default function TodoScreen() {
   const [focusMode, setFocusMode] = useState(false);
   const [pastMode, setPastMode] = useState(false);
   const [byDateMode, setByDateMode] = useState(false);
+  const [insightsMode, setInsightsMode] = useState(false);
 
   // Modal states
   const [deleteTarget, setDeleteTarget] = useState(null);
@@ -61,6 +64,12 @@ export default function TodoScreen() {
   useEffect(() => {
     loadAll();
   }, [loadAll]);
+
+  /* ── Keep the 8:30 AM / 4:00 PM daily reminders in sync with task data ── */
+  useEffect(() => {
+    if (loading || headers.length === 0) return;
+    syncDailyReminders(headers);
+  }, [loading, headers]);
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
@@ -415,6 +424,28 @@ export default function TodoScreen() {
             By Date
           </Text>
         </TouchableOpacity>
+        <TouchableOpacity
+          style={[
+            styles.toggleBtn,
+            insightsMode && styles.toggleBtnActive,
+          ]}
+          onPress={() => setInsightsMode((prev) => !prev)}
+          activeOpacity={0.7}
+        >
+          <Ionicons
+            name="analytics-outline"
+            size={16}
+            color={insightsMode ? "#1e88e5" : "#656d76"}
+          />
+          <Text
+            style={[
+              styles.toggleText,
+              insightsMode && styles.toggleTextActive,
+            ]}
+          >
+            Insights
+          </Text>
+        </TouchableOpacity>
       </View>
 
       <ScrollView
@@ -439,8 +470,12 @@ export default function TodoScreen() {
           </View>
         )}
 
+        {/* Insights view */}
+        {insightsMode && <InsightsSection />}
+
         {/* Headers */}
-        {!byDateMode &&
+        {!insightsMode &&
+          !byDateMode &&
           headers.map((header, idx) => {
             const visibleTasks = header.tasks.filter(matchesFilter);
 
@@ -548,10 +583,11 @@ export default function TodoScreen() {
           );
         })}
 
-        {!byDateMode && headers.length === 0 && (
+        {!insightsMode && !byDateMode && headers.length === 0 && (
           <Text style={styles.emptyText}>No headers yet — add one!</Text>
         )}
-        {!byDateMode &&
+        {!insightsMode &&
+          !byDateMode &&
           focusMode &&
           pastMode &&
           headers.length > 0 &&
@@ -561,14 +597,16 @@ export default function TodoScreen() {
           ) && (
             <Text style={styles.emptyText}>No tasks due today or in the past.</Text>
           )}
-        {!byDateMode &&
+        {!insightsMode &&
+          !byDateMode &&
           focusMode &&
           !pastMode &&
           headers.length > 0 &&
           headers.every((h) => !h.tasks.some((t) => isTaskDueToday(t.ecd))) && (
             <Text style={styles.emptyText}>No tasks due today.</Text>
           )}
-        {!byDateMode &&
+        {!insightsMode &&
+          !byDateMode &&
           !focusMode &&
           pastMode &&
           headers.length > 0 &&
@@ -577,7 +615,8 @@ export default function TodoScreen() {
           )}
 
         {/* By Date view: sections headed by date */}
-        {byDateMode &&
+        {!insightsMode &&
+          byDateMode &&
           byDateGroups.map((group) => (
             <View key={group.key} style={styles.section}>
               <View style={styles.headerRow}>
@@ -602,7 +641,7 @@ export default function TodoScreen() {
               </View>
             </View>
           ))}
-        {byDateMode && byDateGroups.length === 0 && (
+        {!insightsMode && byDateMode && byDateGroups.length === 0 && (
           <Text style={styles.emptyText}>
             No dated tasks to show
             {focusMode || pastMode ? " for this filter" : ""}.
