@@ -18,7 +18,7 @@ configured in `api/client.js`).
   month / year); toggle done, edit, reorder, delete
 - **Filter toggles** (combinable): **Focus** (due today), **Past** (overdue),
   **By Date** (grouped by calendar date), **Insights** (see below),
-  **Events** (see below)
+  **Events** (see below), **Goals** (see below)
 - **Events** — reusable task bundles (e.g. "Burger Night" with its shopping
   list). "Add to todo" opens a date picker plus a checklist of the event's
   tasks (all selected by default, tap to unmark); confirming adds the selected
@@ -26,6 +26,19 @@ configured in `api/client.js`).
   (reused if it already exists, so later additions join it). Each task row
   also has a per-task quick add. Templates are never consumed, so an event
   can be scheduled again and again
+- **Goals** — long-term aims (e.g. "Improve Health") broken into small
+  steps/habits ("Wake up at 6", "Have 1 fruit a day"), listed in the order you
+  want to build them. A step is either paused (numbered) or **under
+  progress** (∞). **Start** puts it under progress: a daily recurring task
+  is created under a todo header named "One Step At A Time" (reused if it
+  already exists) and kept for life. The pause button takes it out of
+  progress: the daily task is removed and the step returns to the backlog.
+  The goal heading's badge (e.g. "1/4 under progress") rises on Start and
+  falls on pause. The two views stay in sync both ways: deleting the daily
+  task from the todo — or the whole "One Step At A Time" header — pauses
+  the matching step(s) automatically. Editing a goal edits its name and
+  step list (one step per line; steps that keep their name keep their
+  status)
 - **Insights** — habit stats and AI coaching from the backend archive:
   - Habit cards: completion %, current/best streak, hit/miss dot row of recent
     scheduled days (habits = tasks scheduled by day of week)
@@ -63,11 +76,13 @@ Shleeji/
 │   ├── TaskCard.js  AddTaskModal.js  EditTaskModal.js
 │   ├── HeaderModal.js  ConfirmModal.js  EcdPicker.js
 │   ├── InsightsSection.js     # Insights view (stats + AI report)
-│   └── EventsSection.js  EventModal.js  ScheduleEventModal.js   # Events view
+│   ├── EventsSection.js  EventModal.js  ScheduleEventModal.js   # Events view
+│   └── GoalsSection.js  GoalModal.js                            # Goals view
 ├── api/
 │   ├── client.js              # fetch wrapper (base URL lives here)
 │   ├── headers.js  tasks.js
 │   ├── events.js              # /events CRUD (reusable task bundles)
+│   ├── goals.js               # /goals CRUD (habit backlogs)
 │   └── insights.js            # /insights/stats, /insights/latest, /insights/generate
 └── utils/
     ├── ecd.js                 # ECD due-today/past/date-key helpers
@@ -95,5 +110,7 @@ npm run publish -- "message" # OTA update to preview branch
 - The Insights tab requires the backend to be deployed with the `/archive` and
   `/insights` endpoints; "Generate now" additionally needs `ANTHROPIC_API_KEY`
   configured on the server.
+- The Goals view requires the backend to be deployed with the `/goals`
+  endpoints (it shows an error banner until then).
 - Counter and Dream data persist locally in AsyncStorage (not synced to the
   backend).

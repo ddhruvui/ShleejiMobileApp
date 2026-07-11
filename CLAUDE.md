@@ -3,7 +3,7 @@
 Expo / React Native app (plain JavaScript, no TypeScript) with three bottom tabs (`App.js`):
 
 - **Dream** (`screens/DreamScreen.js`) — vision board: masonry grid of device-library photos, persisted locally in AsyncStorage (`dreamPhotos`). Add via expo-image-picker, reorder, remove.
-- **Todo** (`screens/TodoScreen.js`) — full TaskAtHand client: header/task CRUD, ECDs, Focus/Past/By-Date/Insights/Events filters, event templates, AI insights, daily local notifications (8:30 AM and 4:00 PM device time).
+- **Todo** (`screens/TodoScreen.js`) — full TaskAtHand client: header/task CRUD, ECDs, Focus/Past/By-Date/Insights/Events/Goals filters, event templates, AI insights, daily local notifications (8:30 AM and 4:00 PM device time).
 - **Counter** (`screens/CounterScreen.js`) — mada counter: tap anywhere to increment; every 108 clicks converts to 1 mada (the app's term throughout — UI label `MADA`, storage key `madaCount`). "+ Add" bulk-adds N clicks and converts (`floor(total/108)` madas, remainder stays as clicks); Reset clears both after confirmation. `clickCount`/`madaCount` persisted in AsyncStorage.
 
 Only the Todo tab talks to the backend; Dream and Counter are local-only.
@@ -17,12 +17,13 @@ Only the Todo tab talks to the backend; Dream and Counter are local-only.
 
 ## Architecture & conventions
 
-- `api/` mirrors TaskAtHandFE's API layer: `apiFetch(path, options)` in `client.js` (JSON headers, throws on `{ error }` or `!res.ok`); one module per resource (headers, tasks, events, insights).
+- `api/` mirrors TaskAtHandFE's API layer: `apiFetch(path, options)` in `client.js` (JSON headers, throws on `{ error }` or `!res.ok`); one module per resource (headers, tasks, events, goals, insights).
 - `utils/ecd.js` mirrors the web frontend's `src/utils/ecd.ts`: four ECD types — `date` (`"YYYY-MM-DD"`), `day_of_week` (array of `"Sun".."Sat"`), `day_of_month` (array of 1–31), `day_of_year` (`"D/M/YYYY"`, no zero-padding) — plus `isTaskDueToday`, `isTaskPast` (date-type only), `getEcdDateKey`, `buildEcdFromInputs`. **A change to ECD logic here almost always needs the same change in TaskAtHandFE and must match the backend's validation.**
 - Functional components + hooks; `StyleSheet.create` for all styling; no UI library. Modals for all forms (Add/EditTaskModal, HeaderModal, EventModal, ScheduleEventModal, ConfirmModal) with state lifted to the parent screen; modals reset their state in `useEffect([visible])`.
 - Task ordering: undone tasks above done tasks; TaskCard disables moves across that barrier (same invariant as web FE and backend).
-- **Filter logic** (TodoScreen `matchesFilter`): Focus = due today, Past = overdue `date`-type only; Focus+Past together = the union of both. By Date groups only non-done tasks by `getEcdDateKey` (recurring tasks surface under today when due). Insights and Events render as full panels replacing the header list.
+- **Filter logic** (TodoScreen `matchesFilter`): Focus = due today, Past = overdue `date`-type only; Focus+Past together = the union of both. By Date groups only non-done tasks by `getEcdDateKey` (recurring tasks surface under today when due). Insights, Events and Goals render as full panels replacing the header list.
 - **Sequential API calls are intentional**: `loadAll` fetches each header's tasks in sequence, and event scheduling creates tasks one at a time to preserve template order (same as web FE). Don't "optimize" these into `Promise.all` without checking ordering implications.
+- **Goal↔todo sync** (`utils/goalSync.js`, mirrors web FE): a goal step is `under_progress` exactly while its daily task lives under the "One Step At A Time" header. Start creates the task, pause removes it, and TodoScreen's delete flows call `pauseStepsMatchingTask`/`pauseAllStartedSteps` when a task/the header is deleted — keep any new delete path calling them.
 - Date parsing is component-wise (never `new Date("YYYY-MM-DD")`) to avoid timezone shifts — preserve this in new date code.
 - **Floating tab bar**: App.js positions the tab bar absolutely (bottom: 30, height: 70), so it overlaps screen content — screens must leave bottom clearance (e.g. CounterScreen's trackpad uses `marginBottom: 120`). Account for this in any new full-height layout.
 - Failed Todo operations surface via an `actionError` banner in TodoScreen; follow that pattern rather than silent catches or alerts.

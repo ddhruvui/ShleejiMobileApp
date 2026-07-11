@@ -18,6 +18,7 @@ import AddTaskModal from "../components/AddTaskModal";
 import HeaderModal from "../components/HeaderModal";
 import InsightsSection from "../components/InsightsSection";
 import EventsSection from "../components/EventsSection";
+import GoalsSection from "../components/GoalsSection";
 import {
   isTaskDueToday,
   isTaskPast,
@@ -25,6 +26,11 @@ import {
   formatDateKey,
 } from "../utils/ecd";
 import { syncDailyReminders } from "../utils/notifications";
+import {
+  isOneStepHeaderName,
+  pauseStepsMatchingTask,
+  pauseAllStartedSteps,
+} from "../utils/goalSync";
 
 export default function TodoScreen() {
   const [headers, setHeaders] = useState([]);
@@ -37,6 +43,7 @@ export default function TodoScreen() {
   const [byDateMode, setByDateMode] = useState(false);
   const [insightsMode, setInsightsMode] = useState(false);
   const [eventsMode, setEventsMode] = useState(false);
+  const [goalsMode, setGoalsMode] = useState(false);
 
   // Modal states
   const [deleteTarget, setDeleteTarget] = useState(null);
@@ -128,6 +135,11 @@ export default function TodoScreen() {
     try {
       await headersApi.remove(deleteTarget.id);
       setHeaders((prev) => prev.filter((h) => h._id !== deleteTarget.id));
+      // Deleting "One Step At A Time" takes every daily habit task with it,
+      // so the started goal steps move back to paused/pending too
+      if (isOneStepHeaderName(deleteTarget.name)) {
+        await pauseAllStartedSteps();
+      }
       setDeleteTarget(null);
       setActionError(null);
     } catch (err) {
@@ -252,8 +264,13 @@ export default function TodoScreen() {
   const confirmDeleteTask = async () => {
     if (!deleteTarget || deleteTarget.type !== "task") return;
     try {
+      const header = headers.find((h) => h._id === deleteTarget.headerId);
       await tasksApi.remove(deleteTarget.id);
       await reloadHeaderTasks(deleteTarget.headerId);
+      // A daily habit task deleted from "One Step At A Time" pauses its step
+      if (header && isOneStepHeaderName(header.name)) {
+        await pauseStepsMatchingTask(deleteTarget.name);
+      }
       setDeleteTarget(null);
       setActionError(null);
     } catch (err) {
@@ -470,6 +487,28 @@ export default function TodoScreen() {
             Events
           </Text>
         </TouchableOpacity>
+        <TouchableOpacity
+          style={[
+            styles.toggleBtn,
+            goalsMode && styles.toggleBtnActive,
+          ]}
+          onPress={() => setGoalsMode((prev) => !prev)}
+          activeOpacity={0.7}
+        >
+          <Ionicons
+            name="footsteps-outline"
+            size={16}
+            color={goalsMode ? "#1e88e5" : "#656d76"}
+          />
+          <Text
+            style={[
+              styles.toggleText,
+              goalsMode && styles.toggleTextActive,
+            ]}
+          >
+            Goals
+          </Text>
+        </TouchableOpacity>
       </View>
 
       <ScrollView
@@ -502,9 +541,15 @@ export default function TodoScreen() {
           <EventsSection onTasksAdded={loadAll} />
         )}
 
+        {/* Goals view */}
+        {!insightsMode && !eventsMode && goalsMode && (
+          <GoalsSection onTasksChanged={loadAll} />
+        )}
+
         {/* Headers */}
         {!insightsMode &&
           !eventsMode &&
+          !goalsMode &&
           !byDateMode &&
           headers.map((header, idx) => {
             const visibleTasks = header.tasks.filter(matchesFilter);
@@ -614,11 +659,12 @@ export default function TodoScreen() {
         })}
 
         {!insightsMode &&
-          !eventsMode && !byDateMode && headers.length === 0 && (
+          !eventsMode && !goalsMode && !byDateMode && headers.length === 0 && (
           <Text style={styles.emptyText}>No headers yet — add one!</Text>
         )}
         {!insightsMode &&
           !eventsMode &&
+          !goalsMode &&
           !byDateMode &&
           focusMode &&
           pastMode &&
@@ -631,6 +677,7 @@ export default function TodoScreen() {
           )}
         {!insightsMode &&
           !eventsMode &&
+          !goalsMode &&
           !byDateMode &&
           focusMode &&
           !pastMode &&
@@ -640,6 +687,7 @@ export default function TodoScreen() {
           )}
         {!insightsMode &&
           !eventsMode &&
+          !goalsMode &&
           !byDateMode &&
           !focusMode &&
           pastMode &&
@@ -651,6 +699,7 @@ export default function TodoScreen() {
         {/* By Date view: sections headed by date */}
         {!insightsMode &&
           !eventsMode &&
+          !goalsMode &&
           byDateMode &&
           byDateGroups.map((group) => (
             <View key={group.key} style={styles.section}>
@@ -677,7 +726,7 @@ export default function TodoScreen() {
             </View>
           ))}
         {!insightsMode &&
-          !eventsMode && byDateMode && byDateGroups.length === 0 && (
+          !eventsMode && !goalsMode && byDateMode && byDateGroups.length === 0 && (
           <Text style={styles.emptyText}>
             No dated tasks to show
             {focusMode || pastMode ? " for this filter" : ""}.
