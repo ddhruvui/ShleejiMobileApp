@@ -17,7 +17,15 @@ configured in `api/client.js`).
   notes and an optional ECD (one-time date, or recurring by day of week /
   month / year); toggle done, edit, reorder, delete
 - **Filter toggles** (combinable): **Focus** (due today), **Past** (overdue),
-  **By Date** (grouped by calendar date), **Insights** (see below)
+  **By Date** (grouped by calendar date), **Insights** (see below),
+  **Events** (see below)
+- **Events** — reusable task bundles (e.g. "Burger Night" with its shopping
+  list). "Add to todo" opens a date picker plus a checklist of the event's
+  tasks (all selected by default, tap to unmark); confirming adds the selected
+  tasks, dated for the chosen day, under a header named after the event
+  (reused if it already exists, so later additions join it). Each task row
+  also has a per-task quick add. Templates are never consumed, so an event
+  can be scheduled again and again
 - **Insights** — habit stats and AI coaching from the backend archive:
   - Habit cards: completion %, current/best streak, hit/miss dot row of recent
     scheduled days (habits = tasks scheduled by day of week)
@@ -54,10 +62,12 @@ Shleeji/
 ├── components/
 │   ├── TaskCard.js  AddTaskModal.js  EditTaskModal.js
 │   ├── HeaderModal.js  ConfirmModal.js  EcdPicker.js
-│   └── InsightsSection.js     # Insights view (stats + AI report)
+│   ├── InsightsSection.js     # Insights view (stats + AI report)
+│   └── EventsSection.js  EventModal.js  ScheduleEventModal.js   # Events view
 ├── api/
 │   ├── client.js              # fetch wrapper (base URL lives here)
 │   ├── headers.js  tasks.js
+│   ├── events.js              # /events CRUD (reusable task bundles)
 │   └── insights.js            # /insights/stats, /insights/latest, /insights/generate
 └── utils/
     ├── ecd.js                 # ECD due-today/past/date-key helpers

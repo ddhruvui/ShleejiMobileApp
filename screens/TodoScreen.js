@@ -17,6 +17,7 @@ import ConfirmModal from "../components/ConfirmModal";
 import AddTaskModal from "../components/AddTaskModal";
 import HeaderModal from "../components/HeaderModal";
 import InsightsSection from "../components/InsightsSection";
+import EventsSection from "../components/EventsSection";
 import {
   isTaskDueToday,
   isTaskPast,
@@ -35,6 +36,7 @@ export default function TodoScreen() {
   const [pastMode, setPastMode] = useState(false);
   const [byDateMode, setByDateMode] = useState(false);
   const [insightsMode, setInsightsMode] = useState(false);
+  const [eventsMode, setEventsMode] = useState(false);
 
   // Modal states
   const [deleteTarget, setDeleteTarget] = useState(null);
@@ -446,6 +448,28 @@ export default function TodoScreen() {
             Insights
           </Text>
         </TouchableOpacity>
+        <TouchableOpacity
+          style={[
+            styles.toggleBtn,
+            eventsMode && styles.toggleBtnActive,
+          ]}
+          onPress={() => setEventsMode((prev) => !prev)}
+          activeOpacity={0.7}
+        >
+          <Ionicons
+            name="albums-outline"
+            size={16}
+            color={eventsMode ? "#1e88e5" : "#656d76"}
+          />
+          <Text
+            style={[
+              styles.toggleText,
+              eventsMode && styles.toggleTextActive,
+            ]}
+          >
+            Events
+          </Text>
+        </TouchableOpacity>
       </View>
 
       <ScrollView
@@ -473,8 +497,14 @@ export default function TodoScreen() {
         {/* Insights view */}
         {insightsMode && <InsightsSection />}
 
+        {/* Events view */}
+        {!insightsMode && eventsMode && (
+          <EventsSection onTasksAdded={loadAll} />
+        )}
+
         {/* Headers */}
         {!insightsMode &&
+          !eventsMode &&
           !byDateMode &&
           headers.map((header, idx) => {
             const visibleTasks = header.tasks.filter(matchesFilter);
@@ -583,10 +613,12 @@ export default function TodoScreen() {
           );
         })}
 
-        {!insightsMode && !byDateMode && headers.length === 0 && (
+        {!insightsMode &&
+          !eventsMode && !byDateMode && headers.length === 0 && (
           <Text style={styles.emptyText}>No headers yet — add one!</Text>
         )}
         {!insightsMode &&
+          !eventsMode &&
           !byDateMode &&
           focusMode &&
           pastMode &&
@@ -598,6 +630,7 @@ export default function TodoScreen() {
             <Text style={styles.emptyText}>No tasks due today or in the past.</Text>
           )}
         {!insightsMode &&
+          !eventsMode &&
           !byDateMode &&
           focusMode &&
           !pastMode &&
@@ -606,6 +639,7 @@ export default function TodoScreen() {
             <Text style={styles.emptyText}>No tasks due today.</Text>
           )}
         {!insightsMode &&
+          !eventsMode &&
           !byDateMode &&
           !focusMode &&
           pastMode &&
@@ -616,6 +650,7 @@ export default function TodoScreen() {
 
         {/* By Date view: sections headed by date */}
         {!insightsMode &&
+          !eventsMode &&
           byDateMode &&
           byDateGroups.map((group) => (
             <View key={group.key} style={styles.section}>
@@ -641,7 +676,8 @@ export default function TodoScreen() {
               </View>
             </View>
           ))}
-        {!insightsMode && byDateMode && byDateGroups.length === 0 && (
+        {!insightsMode &&
+          !eventsMode && byDateMode && byDateGroups.length === 0 && (
           <Text style={styles.emptyText}>
             No dated tasks to show
             {focusMode || pastMode ? " for this filter" : ""}.
@@ -756,6 +792,7 @@ const styles = StyleSheet.create({
   },
   filterBar: {
     flexDirection: "row",
+    flexWrap: "wrap",
     gap: 12,
     paddingHorizontal: 16,
     paddingVertical: 12,
