@@ -5,6 +5,7 @@ import { StatusBar } from "expo-status-bar";
 import { Ionicons } from "@expo/vector-icons";
 
 import DreamScreen from "./screens/DreamScreen";
+import AffirmationsScreen from "./screens/AffirmationsScreen";
 import TodoScreen from "./screens/TodoScreen";
 import CounterScreen from "./screens/CounterScreen";
 
@@ -50,6 +51,16 @@ export default function App() {
             headerShown: false,
             tabBarIcon: ({ color, size }) => (
               <Ionicons name="sparkles" size={size} color={color} />
+            ),
+          }}
+        />
+        <Tab.Screen
+          name="Affirmations"
+          component={AffirmationsScreen}
+          options={{
+            headerShown: false,
+            tabBarIcon: ({ color, size }) => (
+              <Ionicons name="heart" size={size} color={color} />
             ),
           }}
         />

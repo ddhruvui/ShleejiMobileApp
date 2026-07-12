@@ -1,10 +1,11 @@
 # Shleeji
 
-Expo / React Native mobile app for TaskAtHand, with three tabs:
+Expo / React Native mobile app for TaskAtHand, with four tabs:
 
 | Tab       | What it does                                                                 |
 | --------- | ---------------------------------------------------------------------------- |
 | **Dream** | Vision board — add inspiration images from the photo library (masonry grid) |
+| **Affirmations** | Daily affirmations — a scrollable list of short lines to read every day; add, edit, delete (synced with the web app via the backend) |
 | **Todo**  | Full TaskAtHand client — headers, tasks, ECDs, filters, and Insights         |
 | **Counter** | Mada counter — taps accumulate; every 108 clicks converts to 1 mada        |
 
@@ -67,20 +68,23 @@ configured in `api/client.js`).
 
 ```
 Shleeji/
-├── App.js                     # Bottom-tab navigation (Dream / Todo / Counter)
+├── App.js                     # Bottom-tab navigation (Dream / Affirmations / Todo / Counter)
 ├── screens/
 │   ├── TodoScreen.js          # Todo tab incl. filter bar + reminder sync
 │   ├── DreamScreen.js
+│   ├── AffirmationsScreen.js  # Daily affirmations list (backend-synced)
 │   └── CounterScreen.js
 ├── components/
 │   ├── TaskCard.js  AddTaskModal.js  EditTaskModal.js
 │   ├── HeaderModal.js  ConfirmModal.js  EcdPicker.js
+│   ├── AffirmationModal.js    # Add/edit (+ delete) affirmation modal
 │   ├── InsightsSection.js     # Insights view (stats + AI report)
 │   ├── EventsSection.js  EventModal.js  ScheduleEventModal.js   # Events view
 │   └── GoalsSection.js  GoalModal.js                            # Goals view
 ├── api/
 │   ├── client.js              # fetch wrapper (base URL lives here)
 │   ├── headers.js  tasks.js
+│   ├── affirmations.js        # /affirmations CRUD (daily affirmations)
 │   ├── events.js              # /events CRUD (reusable task bundles)
 │   ├── goals.js               # /goals CRUD (habit backlogs)
 │   └── insights.js            # /insights/stats, /insights/latest, /insights/generate
@@ -112,5 +116,7 @@ npm run publish -- "message" # OTA update to preview branch
   configured on the server.
 - The Goals view requires the backend to be deployed with the `/goals`
   endpoints (it shows an error banner until then).
+- The Affirmations tab requires the backend to be deployed with the
+  `/affirmations` endpoints (it shows an error state with Retry until then).
 - Counter and Dream data persist locally in AsyncStorage (not synced to the
-  backend).
+  backend); Affirmations are stored in the backend and sync with the web app.
