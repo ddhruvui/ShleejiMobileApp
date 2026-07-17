@@ -227,6 +227,12 @@ export default function InsightsSection() {
                 icon="flag-outline"
               />
               <ReportBlock
+                title="Calls to make"
+                items={report.callReminders}
+                color="#656d76"
+                icon="call-outline"
+              />
+              <ReportBlock
                 title="Suggestions"
                 items={report.suggestions}
                 color="#2da44e"

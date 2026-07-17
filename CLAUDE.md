@@ -1,12 +1,14 @@
 # Shleeji
 
-Expo / React Native app (plain JavaScript, no TypeScript) with three bottom tabs (`App.js`):
+Expo / React Native app (plain JavaScript, no TypeScript) with five bottom tabs (`App.js`):
 
 - **Dream** (`screens/DreamScreen.js`) — vision board: masonry grid of device-library photos, persisted locally in AsyncStorage (`dreamPhotos`). Add via expo-image-picker, reorder, remove.
+- **Affirmations** (`screens/AffirmationsScreen.js`) — daily affirmations list (backend `/affirmations`): add/edit/delete short lines to read every day, synced with the web app.
 - **Todo** (`screens/TodoScreen.js`) — full TaskAtHand client: header/task CRUD, ECDs, Focus/Past/By-Date/Insights/Events/Goals filters, event templates, AI insights, daily local notifications (8:30 AM and 4:00 PM device time).
+- **Calls** (`screens/CallsScreen.js`) — people to ring (backend `/calls`): Biweekly and Monthly sections with a "called" checkbox per person; the backend's nightly cron unchecks biweekly people on the 15th and everyone on the last day of the month.
 - **Counter** (`screens/CounterScreen.js`) — mada counter: tap anywhere to increment; every 108 clicks converts to 1 mada (the app's term throughout — UI label `MADA`, storage key `madaCount`). "+ Add" bulk-adds N clicks and converts (`floor(total/108)` madas, remainder stays as clicks); Reset clears both after confirmation. `clickCount`/`madaCount` persisted in AsyncStorage.
 
-Only the Todo tab talks to the backend; Dream and Counter are local-only.
+The Todo, Affirmations and Calls tabs talk to the backend; Dream and Counter are local-only.
 
 ## Backend & commands
 
@@ -17,7 +19,8 @@ Only the Todo tab talks to the backend; Dream and Counter are local-only.
 
 ## Architecture & conventions
 
-- `api/` mirrors TaskAtHandFE's API layer: `apiFetch(path, options)` in `client.js` (JSON headers, throws on `{ error }` or `!res.ok`); one module per resource (headers, tasks, events, goals, insights).
+- `api/` mirrors TaskAtHandFE's API layer: `apiFetch(path, options)` in `client.js` (JSON headers, throws on `{ error }` or `!res.ok`); one module per resource (headers, tasks, events, goals, insights, affirmations, calls).
+- **Feature parity with TaskAtHandFE (MANDATORY)**: this app and TaskAtHandFE are two clients of the same backend and must stay at feature parity. A user-facing feature/behavior change in either client must be replicated in the other in the same task (FE toolbar view modes map to bottom tabs here — e.g. FE Affirmations/Calls views ↔ the Affirmations/Calls tabs). If a change is genuinely inapplicable to the other client, call that out explicitly in the summary.
 - `utils/ecd.js` mirrors the web frontend's `src/utils/ecd.ts`: four ECD types — `date` (`"YYYY-MM-DD"`), `day_of_week` (array of `"Sun".."Sat"`), `day_of_month` (array of 1–31), `day_of_year` (`"D/M/YYYY"`, no zero-padding) — plus `isTaskDueToday`, `isTaskPast` (date-type only), `getEcdDateKey`, `buildEcdFromInputs`. **A change to ECD logic here almost always needs the same change in TaskAtHandFE and must match the backend's validation.**
 - Functional components + hooks; `StyleSheet.create` for all styling; no UI library. Modals for all forms (Add/EditTaskModal, HeaderModal, EventModal, ScheduleEventModal, ConfirmModal) with state lifted to the parent screen; modals reset their state in `useEffect([visible])`.
 - Task ordering: undone tasks above done tasks; TaskCard disables moves across that barrier (same invariant as web FE and backend).

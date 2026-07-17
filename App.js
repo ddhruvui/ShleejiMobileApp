@@ -7,6 +7,7 @@ import { Ionicons } from "@expo/vector-icons";
 import DreamScreen from "./screens/DreamScreen";
 import AffirmationsScreen from "./screens/AffirmationsScreen";
 import TodoScreen from "./screens/TodoScreen";
+import CallsScreen from "./screens/CallsScreen";
 import CounterScreen from "./screens/CounterScreen";
 
 const Tab = createBottomTabNavigator();
@@ -71,6 +72,16 @@ export default function App() {
             headerShown: false,
             tabBarIcon: ({ color, size }) => (
               <Ionicons name="checkbox" size={size} color={color} />
+            ),
+          }}
+        />
+        <Tab.Screen
+          name="Calls"
+          component={CallsScreen}
+          options={{
+            headerShown: false,
+            tabBarIcon: ({ color, size }) => (
+              <Ionicons name="call" size={size} color={color} />
             ),
           }}
         />

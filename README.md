@@ -1,12 +1,13 @@
 # Shleeji
 
-Expo / React Native mobile app for TaskAtHand, with four tabs:
+Expo / React Native mobile app for TaskAtHand, with five tabs:
 
 | Tab       | What it does                                                                 |
 | --------- | ---------------------------------------------------------------------------- |
 | **Dream** | Vision board — add inspiration images from the photo library (masonry grid) |
 | **Affirmations** | Daily affirmations — a scrollable list of short lines to read every day; add, edit, delete (synced with the web app via the backend) |
 | **Todo**  | Full TaskAtHand client — headers, tasks, ECDs, filters, and Insights         |
+| **Calls** | People to ring — Biweekly and Monthly sections; check off who you've called (the backend cron unchecks biweekly people on the 15th and everyone on the last day of the month); add, edit, delete (synced with the web app via the backend) |
 | **Counter** | Mada counter — taps accumulate; every 108 clicks converts to 1 mada        |
 
 Talks to the deployed TaskAtHandBE API (`https://task-at-hand-be.vercel.app`,
@@ -46,7 +47,9 @@ configured in `api/client.js`).
   - Task stats: one-time completions, average slip past the planned date,
     most-rescheduled tasks
   - Coach: the latest AI report (summary, on track / slipping, task insights,
-    procrastination flags, suggestions) with a "Generate now" button
+    procrastination flags, calls to make, suggestions) with a "Generate now"
+    button — "Calls to make" appears only for reports generated after the
+    Calls feature
 - **Daily reminders** — local notifications at **8:30 AM** and **4:00 PM**
   (device local time) listing the day's pending tasks and an overdue count.
   Slots with nothing pending are skipped.
@@ -68,16 +71,18 @@ configured in `api/client.js`).
 
 ```
 Shleeji/
-├── App.js                     # Bottom-tab navigation (Dream / Affirmations / Todo / Counter)
+├── App.js                     # Bottom-tab navigation (Dream / Affirmations / Todo / Calls / Counter)
 ├── screens/
 │   ├── TodoScreen.js          # Todo tab incl. filter bar + reminder sync
 │   ├── DreamScreen.js
 │   ├── AffirmationsScreen.js  # Daily affirmations list (backend-synced)
+│   ├── CallsScreen.js         # Biweekly/Monthly call list (backend-synced)
 │   └── CounterScreen.js
 ├── components/
 │   ├── TaskCard.js  AddTaskModal.js  EditTaskModal.js
 │   ├── HeaderModal.js  ConfirmModal.js  EcdPicker.js
 │   ├── AffirmationModal.js    # Add/edit (+ delete) affirmation modal
+│   ├── CallModal.js           # Add/edit call modal (name + biweekly/monthly)
 │   ├── InsightsSection.js     # Insights view (stats + AI report)
 │   ├── EventsSection.js  EventModal.js  ScheduleEventModal.js   # Events view
 │   └── GoalsSection.js  GoalModal.js                            # Goals view
@@ -85,6 +90,7 @@ Shleeji/
 │   ├── client.js              # fetch wrapper (base URL lives here)
 │   ├── headers.js  tasks.js
 │   ├── affirmations.js        # /affirmations CRUD (daily affirmations)
+│   ├── calls.js               # /calls CRUD (biweekly/monthly call list)
 │   ├── events.js              # /events CRUD (reusable task bundles)
 │   ├── goals.js               # /goals CRUD (habit backlogs)
 │   └── insights.js            # /insights/stats, /insights/latest, /insights/generate
@@ -118,5 +124,10 @@ npm run publish -- "message" # OTA update to preview branch
   endpoints (it shows an error banner until then).
 - The Affirmations tab requires the backend to be deployed with the
   `/affirmations` endpoints (it shows an error state with Retry until then).
+- The Calls tab requires the backend to be deployed with the `/calls`
+  endpoints (it shows an error state with Retry until then). The "called"
+  checkmarks are reset by the backend's nightly cron — biweekly people on
+  the 15th, everyone on the last day of the month.
 - Counter and Dream data persist locally in AsyncStorage (not synced to the
-  backend); Affirmations are stored in the backend and sync with the web app.
+  backend); Affirmations and Calls are stored in the backend and sync with
+  the web app.
