@@ -27,8 +27,13 @@ export const update = (id, body) =>
     body: JSON.stringify(body),
   });
 
-/** DELETE /tasks/:id — deletes a task */
-export const remove = (id) =>
+/**
+ * DELETE /tasks/:id — deletes a task.
+ * When deleting an *undone* task, pass `reason`: the backend archives it as a
+ * `task_deleted` event so the AI insights can analyze why tasks are abandoned.
+ */
+export const remove = (id, reason) =>
   apiFetch(`/tasks/${id}`, {
     method: "DELETE",
+    ...(reason !== undefined ? { body: JSON.stringify({ reason }) } : {}),
   });

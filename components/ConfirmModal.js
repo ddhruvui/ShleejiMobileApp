@@ -1,12 +1,37 @@
-import React from "react";
-import { Modal, View, Text, TouchableOpacity, StyleSheet } from "react-native";
+import React, { useEffect, useState } from "react";
+import {
+  Modal,
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  StyleSheet,
+} from "react-native";
 
 export default function ConfirmModal({
   visible,
   message,
   onConfirm,
   onCancel,
+  // When true, show a required reason field; Delete stays disabled until it is filled.
+  requireReason = false,
+  reasonLabel = "Why are you deleting this?",
 }) {
+  const [reason, setReason] = useState("");
+
+  // Reset the field whenever the modal opens/closes (matches the app's modal convention)
+  useEffect(() => {
+    setReason("");
+  }, [visible]);
+
+  const trimmed = reason.trim();
+  const canConfirm = !requireReason || trimmed.length > 0;
+
+  const handleConfirm = () => {
+    if (!canConfirm) return;
+    onConfirm(requireReason ? trimmed : undefined);
+  };
+
   return (
     <Modal
       visible={visible}
@@ -25,11 +50,29 @@ export default function ConfirmModal({
         >
           <View style={styles.modal}>
             <Text style={styles.message}>{message}</Text>
+            {requireReason && (
+              <View style={styles.reasonWrap}>
+                <Text style={styles.reasonLabel}>{reasonLabel}</Text>
+                <TextInput
+                  style={styles.reasonInput}
+                  value={reason}
+                  onChangeText={setReason}
+                  placeholder="e.g. no longer needed, too big, ran out of time…"
+                  placeholderTextColor="#999"
+                  multiline
+                  autoFocus
+                />
+              </View>
+            )}
             <View style={styles.actions}>
               <TouchableOpacity style={styles.cancelBtn} onPress={onCancel}>
                 <Text style={styles.cancelText}>Cancel</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.deleteBtn} onPress={onConfirm}>
+              <TouchableOpacity
+                style={[styles.deleteBtn, !canConfirm && styles.deleteBtnDisabled]}
+                onPress={handleConfirm}
+                disabled={!canConfirm}
+              >
                 <Text style={styles.deleteText}>Delete</Text>
               </TouchableOpacity>
             </View>
@@ -66,6 +109,27 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     lineHeight: 22,
   },
+  reasonWrap: {
+    marginBottom: 20,
+  },
+  reasonLabel: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#555",
+    marginBottom: 8,
+  },
+  reasonInput: {
+    borderWidth: 1,
+    borderColor: "#ddd",
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 14,
+    color: "#1f2328",
+    minHeight: 64,
+    textAlignVertical: "top",
+    backgroundColor: "#fafafa",
+  },
   actions: {
     flexDirection: "row",
     justifyContent: "flex-end",
@@ -87,6 +151,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
     borderRadius: 8,
     backgroundColor: "#e74c3c",
+  },
+  deleteBtnDisabled: {
+    opacity: 0.45,
   },
   deleteText: {
     fontSize: 14,

@@ -258,14 +258,15 @@ export default function TodoScreen() {
       headerId,
       id: taskId,
       name: task.name,
+      done: task.done,
     });
   };
 
-  const confirmDeleteTask = async () => {
+  const confirmDeleteTask = async (reason) => {
     if (!deleteTarget || deleteTarget.type !== "task") return;
     try {
       const header = headers.find((h) => h._id === deleteTarget.headerId);
-      await tasksApi.remove(deleteTarget.id);
+      await tasksApi.remove(deleteTarget.id, reason);
       await reloadHeaderTasks(deleteTarget.headerId);
       // A daily habit task deleted from "One Step At A Time" pauses its step
       if (header && isOneStepHeaderName(header.name)) {
@@ -744,6 +745,9 @@ export default function TodoScreen() {
           deleteTarget?.type === "header"
             ? `Delete header "${deleteTarget?.name}" and all its tasks?`
             : `Delete task "${deleteTarget?.name}"?`
+        }
+        requireReason={
+          deleteTarget?.type === "task" && deleteTarget?.done === false
         }
         onConfirm={
           deleteTarget?.type === "header"
