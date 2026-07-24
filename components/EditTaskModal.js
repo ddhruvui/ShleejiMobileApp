@@ -11,7 +11,7 @@ import {
   Platform,
 } from "react-native";
 import EcdPicker from "./EcdPicker";
-import { buildEcdFromInputs } from "../utils/ecd";
+import { buildEcdFromInputs, isPushedLater } from "../utils/ecd";
 
 function formatDate(dateStr) {
   const d = new Date(dateStr);
@@ -66,6 +66,7 @@ export default function EditTaskModal({
   const [dowVal, setDowVal] = useState(initial.dowVal);
   const [domVal, setDomVal] = useState(initial.domVal);
   const [yearVal, setYearVal] = useState(initial.yearVal);
+  const [reason, setReason] = useState("");
   const [formError, setFormError] = useState(null);
   const textareaRef = useRef(null);
 
@@ -79,10 +80,22 @@ export default function EditTaskModal({
       setDowVal(init.dowVal);
       setDomVal(init.domVal);
       setYearVal(init.yearVal);
+      setReason("");
       setFormError(null);
       setTimeout(() => textareaRef.current?.focus(), 100);
     }
   }, [visible, taskName, notes, ecd]);
+
+  // A postpone: the currently-selected inputs push the original one-time date
+  // later. Detected live so the optional reason field can appear inline.
+  const { ecd: previewEcd } = buildEcdFromInputs({
+    mode,
+    dateVal,
+    dowVal: [...dowVal],
+    domVal: [...domVal],
+    yearVal,
+  });
+  const isPostpone = isPushedLater(ecd, previewEcd);
 
   function handleSave() {
     const trimmedName = nameDraft.trim();
@@ -103,7 +116,17 @@ export default function EditTaskModal({
       return;
     }
     setFormError(null);
-    onConfirm({ name: trimmedName, notes: draft, ecd: newEcd });
+
+    // Attach the reason only for an actual postpone with a non-blank reason;
+    // the backend treats a reason-less postpone as procrastination.
+    const trimmedReason = reason.trim();
+    const includeReason = isPushedLater(ecd, newEcd) && trimmedReason !== "";
+    onConfirm({
+      name: trimmedName,
+      notes: draft,
+      ecd: newEcd,
+      ...(includeReason ? { reason: trimmedReason } : {}),
+    });
   }
 
   return (
@@ -166,6 +189,27 @@ export default function EditTaskModal({
                   yearVal={yearVal}
                   setYearVal={setYearVal}
                 />
+
+                {isPostpone && (
+                  <View style={styles.reasonWrap}>
+                    <Text style={styles.reasonLabel}>
+                      Why postpone? (optional)
+                    </Text>
+                    <TextInput
+                      style={styles.reasonInput}
+                      value={reason}
+                      onChangeText={setReason}
+                      placeholder="e.g. blocked on a dependency, sick, real emergency…"
+                      placeholderTextColor="#999"
+                      multiline
+                      textAlignVertical="top"
+                    />
+                    <Text style={styles.reasonHint}>
+                      No reason is logged as procrastination; a valid one counts
+                      as a legitimate deferral.
+                    </Text>
+                  </View>
+                )}
 
                 <TextInput
                   ref={textareaRef}
@@ -262,6 +306,34 @@ const styles = StyleSheet.create({
   metaSep: {
     color: "#656d76",
     fontSize: 12,
+  },
+  reasonWrap: {
+    marginBottom: 16,
+  },
+  reasonLabel: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#656d76",
+    textTransform: "uppercase",
+    letterSpacing: 0.4,
+    marginBottom: 8,
+  },
+  reasonInput: {
+    borderWidth: 1,
+    borderColor: "#d0d7de",
+    borderRadius: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontSize: 15,
+    color: "#1f2328",
+    minHeight: 64,
+    backgroundColor: "#fafafa",
+  },
+  reasonHint: {
+    fontSize: 12,
+    color: "#656d76",
+    fontStyle: "italic",
+    marginTop: 6,
   },
   notesInput: {
     borderWidth: 1,

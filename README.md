@@ -19,7 +19,10 @@ configured in `api/client.js`).
   notes and an optional ECD (one-time date, or recurring by day of week /
   month / year); toggle done, edit, reorder, delete. Deleting an **undone**
   task asks for a reason (required) which is archived and fed to the AI coach
-  as an abandonment signal; deleting a done task doesn't ask
+  as an abandonment signal; deleting a done task doesn't ask. **Postponing** a
+  dated task (editing it to a later date) offers an optional reason field — a
+  reason-less postpone is treated as procrastination, a valid reason as a
+  legitimate deferral by the AI coach
 - **Filter toggles** (combinable): **Focus** (due today), **Past** (overdue),
   **By Date** (grouped by calendar date), **Insights** (see below),
   **Events** (see below), **Goals** (see below)

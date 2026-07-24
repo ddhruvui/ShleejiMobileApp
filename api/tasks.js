@@ -20,7 +20,13 @@ export const create = (body) =>
     body: JSON.stringify(body),
   });
 
-/** PUT /tasks/:id — updates a task */
+/**
+ * PUT /tasks/:id — updates a task.
+ * When the `ecd` change is a postpone (a one-time date pushed later), include an
+ * optional `reason` in the body: the backend stores it on the `task_rescheduled`
+ * event so the AI insights can tell a reason-less postpone (procrastination)
+ * from a valid deferral. It is ignored otherwise and never stored on the task.
+ */
 export const update = (id, body) =>
   apiFetch(`/tasks/${id}`, {
     method: "PUT",
