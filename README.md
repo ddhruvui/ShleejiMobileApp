@@ -25,7 +25,7 @@ configured in `api/client.js`).
   legitimate deferral by the AI coach
 - **Filter toggles** (combinable): **Focus** (due today), **Past** (overdue),
   **By Date** (grouped by calendar date), **Insights** (see below),
-  **Events** (see below), **Goals** (see below)
+  **Events** (see below), **Goals** (see below), **Projects** (see below)
 - **Events** — reusable task bundles (e.g. "Burger Night" with its shopping
   list). "Add to todo" opens a date picker plus a checklist of the event's
   tasks (all selected by default, tap to unmark); confirming adds the selected
@@ -46,6 +46,25 @@ configured in `api/client.js`).
   the matching step(s) automatically. Editing a goal edits its name and
   step list (one step per line; steps that keep their name keep their
   status)
+- **Projects** — long term projects (e.g. "Automated Stock Market") broken
+  into ordered tasks/steps ("get data from EODHD", "get data from Nasdaq",
+  "deploy to cpu"). Projects are ordered with move up/down arrows
+  (header-style priority) and each project's tasks are added, edited,
+  reordered, completed and deleted with the same interactions as the todo —
+  done tasks always drop to the bottom, and moves never cross the
+  done/undone barrier. Giving a task a **date** mirrors it into the todo as
+  a one-time date task under a header named after the project (reused
+  case-insensitively if it already exists); the badge (e.g. "1/3 done")
+  tracks completion. The two views stay in sync both ways: toggling done on
+  either side flips the other, editing the todo task's name or date updates
+  the project task (clearing the date sets it to none there), reordering on
+  either side mirrors the relative order of linked tasks on the other,
+  deleting the todo task (or its header) unlinks the project task (clearing
+  its date), removing a task's date removes its todo entry, and renaming
+  the project renames its todo header.
+  When the todo task is done and the backend's nightly cron deletes it, the
+  project task is marked done and **retained in the project** as a
+  completed step (its date is kept for the record)
 - **Insights** — habit stats and AI coaching from the backend archive:
   - Habit cards: completion %, current/best streak, hit/miss dot row of recent
     scheduled days (habits = tasks scheduled by day of week)
@@ -90,7 +109,8 @@ Shleeji/
 │   ├── CallModal.js           # Add/edit call modal (name + biweekly/monthly)
 │   ├── InsightsSection.js     # Insights view (stats + AI report)
 │   ├── EventsSection.js  EventModal.js  ScheduleEventModal.js   # Events view
-│   └── GoalsSection.js  GoalModal.js                            # Goals view
+│   ├── GoalsSection.js  GoalModal.js                            # Goals view
+│   └── ProjectsSection.js  ProjectModal.js  ProjectTaskModal.js # Projects view
 ├── api/
 │   ├── client.js              # fetch wrapper (base URL lives here)
 │   ├── headers.js  tasks.js
@@ -98,9 +118,12 @@ Shleeji/
 │   ├── calls.js               # /calls CRUD (biweekly/monthly call list)
 │   ├── events.js              # /events CRUD (reusable task bundles)
 │   ├── goals.js               # /goals CRUD (habit backlogs)
+│   ├── projects.js            # /projects CRUD (long term projects)
 │   └── insights.js            # /insights/stats, /insights/latest, /insights/generate
 └── utils/
     ├── ecd.js                 # ECD due-today/past/date-key helpers
+    ├── goalSync.js            # goal step ↔ todo sync helpers
+    ├── projectSync.js         # project task ↔ todo sync helpers
     └── notifications.js       # 8:30 AM / 4:00 PM daily reminders
 ```
 
@@ -127,6 +150,10 @@ npm run publish -- "message" # OTA update to preview branch
   configured on the server.
 - The Goals view requires the backend to be deployed with the `/goals`
   endpoints (it shows an error banner until then).
+- The Projects view requires the backend to be deployed with the `/projects`
+  endpoints (it shows an error banner until then). Completed project steps
+  are marked done by the backend's nightly cron when it deletes the finished
+  todo task.
 - The Affirmations tab requires the backend to be deployed with the
   `/affirmations` endpoints (it shows an error state with Retry until then).
 - The Calls tab requires the backend to be deployed with the `/calls`

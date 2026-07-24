@@ -19,6 +19,7 @@ import HeaderModal from "../components/HeaderModal";
 import InsightsSection from "../components/InsightsSection";
 import EventsSection from "../components/EventsSection";
 import GoalsSection from "../components/GoalsSection";
+import ProjectsSection from "../components/ProjectsSection";
 import {
   isTaskDueToday,
   isTaskPast,
@@ -31,6 +32,12 @@ import {
   pauseStepsMatchingTask,
   pauseAllStartedSteps,
 } from "../utils/goalSync";
+import {
+  syncProjectTasksForTodoDone,
+  syncProjectTasksForTodoEdit,
+  syncProjectTaskOrderForTodo,
+  unlinkProjectTasksForTodoTasks,
+} from "../utils/projectSync";
 
 export default function TodoScreen() {
   const [headers, setHeaders] = useState([]);
@@ -44,6 +51,7 @@ export default function TodoScreen() {
   const [insightsMode, setInsightsMode] = useState(false);
   const [eventsMode, setEventsMode] = useState(false);
   const [goalsMode, setGoalsMode] = useState(false);
+  const [projectsMode, setProjectsMode] = useState(false);
 
   // Modal states
   const [deleteTarget, setDeleteTarget] = useState(null);
@@ -133,6 +141,8 @@ export default function TodoScreen() {
   const handleDeleteHeader = async () => {
     if (!deleteTarget || deleteTarget.type !== "header") return;
     try {
+      const header = headers.find((h) => h._id === deleteTarget.id);
+      const cascadedTaskIds = header ? header.tasks.map((t) => t._id) : [];
       await headersApi.remove(deleteTarget.id);
       setHeaders((prev) => prev.filter((h) => h._id !== deleteTarget.id));
       // Deleting "One Step At A Time" takes every daily habit task with it,
@@ -140,6 +150,8 @@ export default function TodoScreen() {
       if (isOneStepHeaderName(deleteTarget.name)) {
         await pauseAllStartedSteps();
       }
+      // Cascade-deleted tasks may back dated project tasks — unlink them
+      await unlinkProjectTasksForTodoTasks(cascadedTaskIds);
       setDeleteTarget(null);
       setActionError(null);
     } catch (err) {
@@ -199,6 +211,8 @@ export default function TodoScreen() {
     try {
       await tasksApi.update(taskId, { done: !task.done });
       await reloadHeaderTasks(headerId);
+      // A task linked from a long-term project mirrors its done state there
+      await syncProjectTasksForTodoDone(taskId, !task.done);
       setActionError(null);
     } catch (err) {
       setActionError(err.message);
@@ -214,6 +228,9 @@ export default function TodoScreen() {
         ...(payload.reason ? { reason: payload.reason } : {}),
       });
       await reloadHeaderTasks(headerId);
+      // A task linked from a long-term project mirrors its name and date
+      // there (a cleared/recurring ECD clears the project date)
+      await syncProjectTasksForTodoEdit(taskId, payload.name, payload.ecd);
       setActionError(null);
     } catch (err) {
       setActionError(err.message);
@@ -227,7 +244,12 @@ export default function TodoScreen() {
     const newPriority = task.priority - 1;
     try {
       await tasksApi.update(taskId, { priority: newPriority });
-      await reloadHeaderTasks(headerId);
+      const fresh = await tasksApi.getAll(headerId);
+      setHeaders((prev) =>
+        prev.map((h) => (h._id === headerId ? { ...h, tasks: fresh } : h)),
+      );
+      // Tasks linked from a long-term project keep the project's order in step
+      await syncProjectTaskOrderForTodo(fresh.map((t) => t._id));
       setActionError(null);
     } catch (err) {
       setActionError(err.message);
@@ -242,7 +264,12 @@ export default function TodoScreen() {
     const newPriority = task.priority + 1;
     try {
       await tasksApi.update(taskId, { priority: newPriority });
-      await reloadHeaderTasks(headerId);
+      const fresh = await tasksApi.getAll(headerId);
+      setHeaders((prev) =>
+        prev.map((h) => (h._id === headerId ? { ...h, tasks: fresh } : h)),
+      );
+      // Tasks linked from a long-term project keep the project's order in step
+      await syncProjectTaskOrderForTodo(fresh.map((t) => t._id));
       setActionError(null);
     } catch (err) {
       setActionError(err.message);
@@ -273,6 +300,8 @@ export default function TodoScreen() {
       if (header && isOneStepHeaderName(header.name)) {
         await pauseStepsMatchingTask(deleteTarget.name);
       }
+      // A task backing a dated project task unlinks it there
+      await unlinkProjectTasksForTodoTasks([deleteTarget.id]);
       setDeleteTarget(null);
       setActionError(null);
     } catch (err) {
@@ -511,6 +540,28 @@ export default function TodoScreen() {
             Goals
           </Text>
         </TouchableOpacity>
+        <TouchableOpacity
+          style={[
+            styles.toggleBtn,
+            projectsMode && styles.toggleBtnActive,
+          ]}
+          onPress={() => setProjectsMode((prev) => !prev)}
+          activeOpacity={0.7}
+        >
+          <Ionicons
+            name="rocket-outline"
+            size={16}
+            color={projectsMode ? "#1e88e5" : "#656d76"}
+          />
+          <Text
+            style={[
+              styles.toggleText,
+              projectsMode && styles.toggleTextActive,
+            ]}
+          >
+            Projects
+          </Text>
+        </TouchableOpacity>
       </View>
 
       <ScrollView
@@ -548,10 +599,16 @@ export default function TodoScreen() {
           <GoalsSection onTasksChanged={loadAll} />
         )}
 
+        {/* Projects view */}
+        {!insightsMode && !eventsMode && !goalsMode && projectsMode && (
+          <ProjectsSection onTasksChanged={loadAll} />
+        )}
+
         {/* Headers */}
         {!insightsMode &&
           !eventsMode &&
           !goalsMode &&
+          !projectsMode &&
           !byDateMode &&
           headers.map((header, idx) => {
             const visibleTasks = header.tasks.filter(matchesFilter);
@@ -661,12 +718,17 @@ export default function TodoScreen() {
         })}
 
         {!insightsMode &&
-          !eventsMode && !goalsMode && !byDateMode && headers.length === 0 && (
+          !eventsMode &&
+          !goalsMode &&
+          !projectsMode &&
+          !byDateMode &&
+          headers.length === 0 && (
           <Text style={styles.emptyText}>No headers yet — add one!</Text>
         )}
         {!insightsMode &&
           !eventsMode &&
           !goalsMode &&
+          !projectsMode &&
           !byDateMode &&
           focusMode &&
           pastMode &&
@@ -680,6 +742,7 @@ export default function TodoScreen() {
         {!insightsMode &&
           !eventsMode &&
           !goalsMode &&
+          !projectsMode &&
           !byDateMode &&
           focusMode &&
           !pastMode &&
@@ -690,6 +753,7 @@ export default function TodoScreen() {
         {!insightsMode &&
           !eventsMode &&
           !goalsMode &&
+          !projectsMode &&
           !byDateMode &&
           !focusMode &&
           pastMode &&
@@ -702,6 +766,7 @@ export default function TodoScreen() {
         {!insightsMode &&
           !eventsMode &&
           !goalsMode &&
+          !projectsMode &&
           byDateMode &&
           byDateGroups.map((group) => (
             <View key={group.key} style={styles.section}>
@@ -728,7 +793,11 @@ export default function TodoScreen() {
             </View>
           ))}
         {!insightsMode &&
-          !eventsMode && !goalsMode && byDateMode && byDateGroups.length === 0 && (
+          !eventsMode &&
+          !goalsMode &&
+          !projectsMode &&
+          byDateMode &&
+          byDateGroups.length === 0 && (
           <Text style={styles.emptyText}>
             No dated tasks to show
             {focusMode || pastMode ? " for this filter" : ""}.
