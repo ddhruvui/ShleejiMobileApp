@@ -11,6 +11,63 @@
  */
 
 import * as projectsApi from "../api/projects";
+import * as headersApi from "../api/headers";
+
+/**
+ * Order the todo's project-derived headers to follow the projects' priority
+ * order. A todo header counts as "project-derived" when its name matches an
+ * existing project (case-insensitive) — those headers are arranged by their
+ * project's priority (0 = top) and placed as one contiguous block starting at
+ * priority 1 when any non-project header exists (the topmost non-project
+ * header keeps slot 0), or at priority 0 when there are none. The remaining
+ * non-project headers keep their relative order and fill the slots after the
+ * block.
+ *
+ * Called after a project task creates/reuses its todo header and after a
+ * project is moved, so "Home Improvement above Automated Stock Market" in the
+ * projects view is mirrored by the todo headers. No-op when the todo has no
+ * project header (or it is already in order).
+ */
+export async function syncProjectHeaderOrder() {
+  const [projects, headers] = await Promise.all([
+    projectsApi.getAll(),
+    headersApi.getAll(),
+  ]);
+  const projectPriority = new Map(
+    projects.map((p) => [p.name.trim().toLowerCase(), p.priority]),
+  );
+  const isProjectHeader = (h) =>
+    projectPriority.has(h.name.trim().toLowerCase());
+
+  // headers arrive sorted by priority ascending (index === priority)
+  const projectHeaders = headers
+    .filter(isProjectHeader)
+    .sort(
+      (a, b) =>
+        projectPriority.get(a.name.trim().toLowerCase()) -
+        projectPriority.get(b.name.trim().toLowerCase()),
+    );
+  if (projectHeaders.length === 0) return;
+
+  const nonProjectHeaders = headers.filter((h) => !isProjectHeader(h));
+  const desired =
+    nonProjectHeaders.length > 0
+      ? [nonProjectHeaders[0], ...projectHeaders, ...nonProjectHeaders.slice(1)]
+      : projectHeaders;
+
+  // Realize the target order with minimal move-to-priority updates: walk the
+  // list top-down, and whenever the header at slot i is wrong, move the one
+  // that belongs there up to i. Slots below i are already final, so a move up
+  // only shifts the (wrong) headers in between — mirrored locally in `work`.
+  const work = [...headers];
+  for (let i = 0; i < desired.length; i++) {
+    if (work[i]._id === desired[i]._id) continue;
+    const j = work.findIndex((h) => h._id === desired[i]._id);
+    const [moved] = work.splice(j, 1);
+    work.splice(i, 0, moved);
+    await headersApi.update(moved._id, { priority: i });
+  }
+}
 
 /**
  * After a todo task's done state was toggled, mirror the new state onto

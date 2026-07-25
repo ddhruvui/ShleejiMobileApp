@@ -10,6 +10,7 @@ import { Ionicons } from "@expo/vector-icons";
 import * as projectsApi from "../api/projects";
 import * as headersApi from "../api/headers";
 import * as tasksApi from "../api/tasks";
+import { syncProjectHeaderOrder } from "../utils/projectSync";
 import ProjectModal from "./ProjectModal";
 import ProjectTaskModal from "./ProjectTaskModal";
 import ConfirmModal from "./ConfirmModal";
@@ -64,17 +65,27 @@ export default function ProjectsSection({ onTasksChanged }) {
     );
   };
 
+  /**
+   * The note the linked todo task carries: the project task's own notes when
+   * it has any, else the "Step towards …" default that flags the origin.
+   */
+  const todoNoteFor = (projectName, notes) =>
+    notes && notes.trim() ? notes : `Step towards "${projectName}"`;
+
   /** Create the linked todo task for a dated project task; returns its _id. */
-  const createTodoTask = async (projectName, taskName, date) => {
+  const createTodoTask = async (projectName, taskName, date, notes) => {
     const header =
       (await findProjectHeader(projectName)) ||
       (await headersApi.create({ name: projectName }));
     const created = await tasksApi.create({
       name: taskName,
       headerId: header._id,
-      notes: `Step towards "${projectName}"`,
+      notes: todoNoteFor(projectName, notes),
       ecd: { type: "date", value: date },
     });
+    // Place the project header in the todo per the projects' priority order
+    // (a freshly created header would otherwise sit at the bottom).
+    await syncProjectHeaderOrder();
     return created._id;
   };
 
@@ -122,7 +133,10 @@ export default function ProjectsSection({ onTasksChanged }) {
       await projectsApi.update(project._id, {
         priority: project.priority + delta,
       });
+      // Mirror the new project order onto the todo's project headers
+      await syncProjectHeaderOrder();
       await loadProjects();
+      onTasksChanged();
       setError(null);
     } catch (err) {
       setError(err.message);
@@ -152,22 +166,34 @@ export default function ProjectsSection({ onTasksChanged }) {
             project.name,
             draft.name,
             draft.date,
+            draft.notes,
           );
           todoTouched = true;
         }
         await replaceTasks(project, [
           ...project.tasks,
-          { name: draft.name, date: draft.date, done: false, todoTaskId },
+          {
+            name: draft.name,
+            notes: draft.notes,
+            date: draft.date,
+            done: false,
+            todoTaskId,
+          },
         ]);
       } else {
-        // Edit: keep the linked todo task in step with name/date changes
+        // Edit: keep the linked todo task in step with name/date/notes changes
         const current = project.tasks[taskIndex];
         let todoTaskId = current.todoTaskId;
         if (draft.date) {
           if (todoTaskId) {
-            if (current.name !== draft.name || current.date !== draft.date) {
+            if (
+              current.name !== draft.name ||
+              current.date !== draft.date ||
+              current.notes !== draft.notes
+            ) {
               await tasksApi.update(todoTaskId, {
                 name: draft.name,
+                notes: todoNoteFor(project.name, draft.notes),
                 ecd: { type: "date", value: draft.date },
               });
               todoTouched = true;
@@ -177,6 +203,7 @@ export default function ProjectsSection({ onTasksChanged }) {
               project.name,
               draft.name,
               draft.date,
+              draft.notes,
             );
             todoTouched = true;
           }
@@ -190,7 +217,13 @@ export default function ProjectsSection({ onTasksChanged }) {
           project,
           project.tasks.map((t, i) =>
             i === taskIndex
-              ? { ...t, name: draft.name, date: draft.date, todoTaskId }
+              ? {
+                  ...t,
+                  name: draft.name,
+                  notes: draft.notes,
+                  date: draft.date,
+                  todoTaskId,
+                }
               : t,
           ),
         );
@@ -225,7 +258,12 @@ export default function ProjectsSection({ onTasksChanged }) {
       } else if (!done && task.date) {
         // Undoing after the cron consumed the link: the dated task returns
         // to the todo
-        todoTaskId = await createTodoTask(project.name, task.name, task.date);
+        todoTaskId = await createTodoTask(
+          project.name,
+          task.name,
+          task.date,
+          task.notes,
+        );
         todoTouched = true;
       }
       await replaceTasks(
@@ -423,15 +461,28 @@ export default function ProjectsSection({ onTasksChanged }) {
                         <Ionicons name="checkmark" size={14} color="#fff" />
                       )}
                     </TouchableOpacity>
-                    <Text
-                      style={[
-                        styles.taskName,
-                        task.done && styles.taskNameDone,
-                      ]}
-                      numberOfLines={2}
-                    >
-                      {task.name}
-                    </Text>
+                    <View style={styles.taskMain}>
+                      <Text
+                        style={[
+                          styles.taskName,
+                          task.done && styles.taskNameDone,
+                        ]}
+                        numberOfLines={2}
+                      >
+                        {task.name}
+                      </Text>
+                      {!!task.notes && (
+                        <Text
+                          style={[
+                            styles.taskNotes,
+                            task.done && styles.taskNotesDone,
+                          ]}
+                          numberOfLines={3}
+                        >
+                          {task.notes}
+                        </Text>
+                      )}
+                    </View>
                     {task.date && (
                       <Text
                         style={[
@@ -529,6 +580,8 @@ export default function ProjectsSection({ onTasksChanged }) {
             ? {
                 name: taskModalState.project.tasks[taskModalState.taskIndex]
                   .name,
+                notes:
+                  taskModalState.project.tasks[taskModalState.taskIndex].notes,
                 date: taskModalState.project.tasks[taskModalState.taskIndex]
                   .date,
               }
@@ -678,14 +731,24 @@ const styles = StyleSheet.create({
     borderColor: "#1a7f37",
     backgroundColor: "#1a7f37",
   },
-  taskName: {
+  taskMain: {
     flex: 1,
+  },
+  taskName: {
     fontSize: 15,
     color: "#1f2328",
   },
   taskNameDone: {
     textDecorationLine: "line-through",
     color: "#656d76",
+  },
+  taskNotes: {
+    fontSize: 12,
+    color: "#656d76",
+    marginTop: 2,
+  },
+  taskNotesDone: {
+    opacity: 0.7,
   },
   taskDate: {
     fontSize: 11,

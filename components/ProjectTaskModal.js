@@ -23,11 +23,12 @@ function todayInputVal() {
 export default function ProjectTaskModal({
   visible,
   projectName,
-  task, // { name, date } when editing; undefined when adding
+  task, // { name, notes, date } when editing; undefined when adding
   onConfirm,
   onCancel,
 }) {
   const [name, setName] = useState("");
+  const [notes, setNotes] = useState("");
   const [mode, setMode] = useState("none");
   const [dateVal, setDateVal] = useState(todayInputVal());
   const [showDatePicker, setShowDatePicker] = useState(false);
@@ -36,6 +37,7 @@ export default function ProjectTaskModal({
   useEffect(() => {
     if (visible) {
       setName(task ? task.name : "");
+      setNotes(task && task.notes ? task.notes : "");
       setMode(task && task.date ? "date" : "none");
       setDateVal(task && task.date ? task.date : todayInputVal());
       setShowDatePicker(false);
@@ -74,7 +76,11 @@ export default function ProjectTaskModal({
   function handleSubmit() {
     const trimmed = name.trim();
     if (!trimmed) return;
-    onConfirm({ name: trimmed, date: mode === "date" ? dateVal : null });
+    onConfirm({
+      name: trimmed,
+      notes,
+      date: mode === "date" ? dateVal : null,
+    });
   }
 
   return (
@@ -154,6 +160,16 @@ export default function ProjectTaskModal({
               </View>
             )}
 
+            <Text style={styles.label}>Notes</Text>
+            <TextInput
+              style={styles.notesInput}
+              placeholder="Add notes…"
+              placeholderTextColor="#999"
+              value={notes}
+              onChangeText={setNotes}
+              multiline
+            />
+
             <View style={styles.actions}>
               <TouchableOpacity style={styles.cancelBtn} onPress={onCancel}>
                 <Text style={styles.cancelText}>Cancel</Text>
@@ -224,6 +240,19 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
     letterSpacing: 0.5,
     marginBottom: 8,
+  },
+  notesInput: {
+    borderWidth: 1,
+    borderColor: "#d0d7de",
+    borderRadius: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontSize: 15,
+    color: "#1f2328",
+    marginBottom: 8,
+    backgroundColor: "#fafafa",
+    minHeight: 72,
+    textAlignVertical: "top",
   },
   modeRow: {
     flexDirection: "row",

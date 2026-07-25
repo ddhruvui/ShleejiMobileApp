@@ -52,16 +52,24 @@ configured in `api/client.js`).
   (header-style priority) and each project's tasks are added, edited,
   reordered, completed and deleted with the same interactions as the todo —
   done tasks always drop to the bottom, and moves never cross the
-  done/undone barrier. Giving a task a **date** mirrors it into the todo as
-  a one-time date task under a header named after the project (reused
-  case-insensitively if it already exists); the badge (e.g. "1/3 done")
-  tracks completion. The two views stay in sync both ways: toggling done on
+  done/undone barrier. Each task can carry free-text **notes** (shown under
+  the task name), just like a todo task. Giving a task a **date** mirrors it
+  into the todo as a one-time date task under a header named after the
+  project (reused case-insensitively if it already exists), and the task's
+  notes are mirrored onto that todo task (an empty note falls back to a
+  "Step towards …" default); the badge (e.g. "1/3 done") tracks completion.
+  The two views stay in sync both ways: toggling done on
   either side flips the other, editing the todo task's name or date updates
   the project task (clearing the date sets it to none there), reordering on
   either side mirrors the relative order of linked tasks on the other,
   deleting the todo task (or its header) unlinks the project task (clearing
   its date), removing a task's date removes its todo entry, and renaming
-  the project renames its todo header.
+  the project renames its todo header. The project-derived todo headers are
+  kept in the projects' priority order — a project ranked above another has
+  its todo header above the other's — placed as a contiguous block starting
+  just below the topmost existing header (at priority 1), or at the very top
+  (priority 0) when the todo has no other headers; moving a project up/down
+  re-sorts its todo header to match.
   When the todo task is done and the backend's nightly cron deletes it, the
   project task is marked done and **retained in the project** as a
   completed step (its date is kept for the record)
