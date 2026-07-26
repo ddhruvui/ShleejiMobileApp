@@ -24,6 +24,7 @@ export default function ProjectTaskModal({
   visible,
   projectName,
   task, // { name, notes, date } when editing; undefined when adding
+  busy = false, // true while the parent's save is in flight — blocks a dup submit
   onConfirm,
   onCancel,
 }) {
@@ -74,6 +75,7 @@ export default function ProjectTaskModal({
   };
 
   function handleSubmit() {
+    if (busy) return;
     const trimmed = name.trim();
     if (!trimmed) return;
     onConfirm({
@@ -175,9 +177,12 @@ export default function ProjectTaskModal({
                 <Text style={styles.cancelText}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[styles.confirmBtn, !name.trim() && styles.disabledBtn]}
+                style={[
+                  styles.confirmBtn,
+                  (!name.trim() || busy) && styles.disabledBtn,
+                ]}
                 onPress={handleSubmit}
-                disabled={!name.trim()}
+                disabled={!name.trim() || busy}
               >
                 <Text style={styles.confirmText}>
                   {task ? "Save" : "Add task"}
