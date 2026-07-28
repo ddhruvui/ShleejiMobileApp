@@ -3,71 +3,24 @@
  * src/utils/projectSync.ts).
  *
  * A project task with a date lives in the todo as a one-time date task under
- * a header named after the project, linked via todoTaskId. When that todo
- * task is toggled or deleted from the todo side, these helpers update the
- * matching project tasks so the two views agree. (The nightly cron closes
- * the loop server-side: deleting a done linked todo task marks the project
- * task done and clears the link.)
+ * the project's own header, linked via todoTaskId. When that todo task is
+ * toggled or deleted from the todo side, these helpers update the matching
+ * project tasks so the two views agree. (The nightly cron closes the loop
+ * server-side: deleting a done linked todo task marks the project task done
+ * and clears the link.)
  */
 
 import * as projectsApi from "../api/projects";
-import * as headersApi from "../api/headers";
 
 /**
- * Order the todo's project-derived headers to follow the projects' priority
- * order. A todo header counts as "project-derived" when its name matches an
- * existing project (case-insensitive) — those headers are arranged by their
- * project's priority (0 = top) and placed as one contiguous block starting at
- * priority 1 when any non-project header exists (the topmost non-project
- * header keeps slot 0), or at priority 0 when there are none. The remaining
- * non-project headers keep their relative order and fill the slots after the
- * block.
- *
- * Called after a project task creates/reuses its todo header and after a
- * project is moved, so "Home Improvement above Automated Stock Market" in the
- * projects view is mirrored by the todo headers. No-op when the todo has no
- * project header (or it is already in order).
+ * Note: where a project's todo header sits is **not** synced from here. The
+ * backend owns that rule — `POST /headers { projectId }` places the header in
+ * the projects' priority order, and moving/renaming/deleting a project
+ * cascades onto the header server-side. The old client-side
+ * `syncProjectHeaderOrder` walked the header list issuing one PUT per moved
+ * header, which was non-atomic, raced with the web client, and re-derived the
+ * server's own priority-shift semantics.
  */
-export async function syncProjectHeaderOrder() {
-  const [projects, headers] = await Promise.all([
-    projectsApi.getAll(),
-    headersApi.getAll(),
-  ]);
-  const projectPriority = new Map(
-    projects.map((p) => [p.name.trim().toLowerCase(), p.priority]),
-  );
-  const isProjectHeader = (h) =>
-    projectPriority.has(h.name.trim().toLowerCase());
-
-  // headers arrive sorted by priority ascending (index === priority)
-  const projectHeaders = headers
-    .filter(isProjectHeader)
-    .sort(
-      (a, b) =>
-        projectPriority.get(a.name.trim().toLowerCase()) -
-        projectPriority.get(b.name.trim().toLowerCase()),
-    );
-  if (projectHeaders.length === 0) return;
-
-  const nonProjectHeaders = headers.filter((h) => !isProjectHeader(h));
-  const desired =
-    nonProjectHeaders.length > 0
-      ? [nonProjectHeaders[0], ...projectHeaders, ...nonProjectHeaders.slice(1)]
-      : projectHeaders;
-
-  // Realize the target order with minimal move-to-priority updates: walk the
-  // list top-down, and whenever the header at slot i is wrong, move the one
-  // that belongs there up to i. Slots below i are already final, so a move up
-  // only shifts the (wrong) headers in between — mirrored locally in `work`.
-  const work = [...headers];
-  for (let i = 0; i < desired.length; i++) {
-    if (work[i]._id === desired[i]._id) continue;
-    const j = work.findIndex((h) => h._id === desired[i]._id);
-    const [moved] = work.splice(j, 1);
-    work.splice(i, 0, moved);
-    await headersApi.update(moved._id, { priority: i });
-  }
-}
 
 /**
  * After a todo task's done state was toggled, mirror the new state onto
@@ -91,23 +44,30 @@ export async function syncProjectTasksForTodoDone(taskId, done) {
 }
 
 /**
- * After a todo task was edited, mirror its name and date onto every project
- * task linked to it. A `date`-type ECD becomes the project task's date; any
- * other ECD (cleared to none, or switched to a recurring type) sets the
- * project task's date to null — the link itself is kept either way.
+ * After a todo task was edited, mirror its name, date and notes onto every
+ * project task linked to it. A `date`-type ECD becomes the project task's
+ * date; any other ECD (cleared to none, or switched to a recurring type) sets
+ * the project task's date to null — the link itself is kept either way.
  */
-export async function syncProjectTasksForTodoEdit(taskId, name, ecd) {
+export async function syncProjectTasksForTodoEdit(taskId, name, ecd, notes) {
   const date = ecd && ecd.type === "date" ? ecd.value : null;
   const projects = await projectsApi.getAll();
   for (const project of projects) {
+    // The todo task shows a `Step towards "<project>"` placeholder when the
+    // project task has no notes of its own — mirroring that back would turn
+    // the placeholder into real project notes, so it reads as empty here.
+    const mirroredNotes =
+      notes === `Step towards "${project.name}"` ? "" : notes;
     let changed = false;
     const tasks = project.tasks.map((task) => {
       if (
         task.todoTaskId === taskId &&
-        (task.name !== name || task.date !== date)
+        (task.name !== name ||
+          task.date !== date ||
+          task.notes !== mirroredNotes)
       ) {
         changed = true;
-        return { ...task, name, date };
+        return { ...task, name, date, notes: mirroredNotes };
       }
       return task;
     });

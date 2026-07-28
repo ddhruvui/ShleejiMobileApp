@@ -11,6 +11,7 @@ import * as goalsApi from "../api/goals";
 import * as headersApi from "../api/headers";
 import * as tasksApi from "../api/tasks";
 import GoalModal from "./GoalModal";
+import AddStepModal from "./AddStepModal";
 import ConfirmModal from "./ConfirmModal";
 import { ONE_STEP_HEADER } from "../utils/goalSync";
 
@@ -20,6 +21,19 @@ const DAILY_ECD = {
   value: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
 };
 
+/**
+ * Under-progress steps sort above the pending backlog (stable within each
+ * group) — the goals-side mirror of the todo's undone-above-done barrier.
+ * Every step mutation persists this order, and the render applies it too so
+ * legacy goals stored unsorted display correctly before their next write.
+ */
+function sortSteps(steps) {
+  return [
+    ...steps.filter((s) => s.status !== "pending"),
+    ...steps.filter((s) => s.status === "pending"),
+  ];
+}
+
 export default function GoalsSection({ onTasksChanged }) {
   const [goals, setGoals] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -27,9 +41,13 @@ export default function GoalsSection({ onTasksChanged }) {
   const [notice, setNotice] = useState(null);
   const [busyStep, setBusyStep] = useState(null);
 
-  // Modal states
-  const [goalModalState, setGoalModalState] = useState(null);
+  // Modal states. There is no edit mode: the goal heading has no Edit button,
+  // so a goal is created here and afterwards only its steps change.
+  const [addGoalOpen, setAddGoalOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
+  const [addStepGoal, setAddStepGoal] = useState(null);
+  const [addingStep, setAddingStep] = useState(false);
+  const [deleteStepTarget, setDeleteStepTarget] = useState(null);
 
   const loadGoals = useCallback(async () => {
     try {
@@ -50,32 +68,73 @@ export default function GoalsSection({ onTasksChanged }) {
   /* ── Goal CRUD ── */
 
   const handleSaveGoal = async (draft) => {
-    if (!goalModalState) return;
     try {
-      if (goalModalState.mode === "add") {
-        await goalsApi.create({
-          name: draft.name,
-          steps: draft.stepNames.map((name) => ({ name, status: "pending" })),
-        });
-      } else {
-        // Steps that keep their name keep their status; new lines start pending
-        const previous = goalModalState.goal.steps;
-        const steps = draft.stepNames.map((name) => {
-          const match = previous.find(
-            (s) => s.name.trim().toLowerCase() === name.trim().toLowerCase(),
-          );
-          return { name, status: match ? match.status : "pending" };
-        });
-        await goalsApi.update(goalModalState.goal._id, {
-          name: draft.name,
-          steps,
-        });
-      }
+      await goalsApi.create({
+        name: draft.name,
+        steps: draft.stepNames.map((name) => ({ name, status: "pending" })),
+      });
       await loadGoals();
-      setGoalModalState(null);
+      setAddGoalOpen(false);
       setError(null);
     } catch (err) {
       setError(err.message);
+    }
+  };
+
+  /**
+   * Append one step to a goal's backlog — the goals-side equivalent of adding
+   * a task to a header. New steps start pending.
+   */
+  const handleAddStep = async (name) => {
+    if (!addStepGoal) return;
+    setAddingStep(true);
+    try {
+      await goalsApi.update(addStepGoal._id, {
+        steps: [...addStepGoal.steps, { name, status: "pending" }],
+      });
+      await loadGoals();
+      setAddStepGoal(null);
+      setError(null);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setAddingStep(false);
+    }
+  };
+
+  /** Reorder goals; the server shifts the others to keep 0..n-1 contiguous. */
+  const handleMoveGoal = async (goal, delta) => {
+    try {
+      await goalsApi.update(goal._id, { priority: goal.priority + delta });
+      await loadGoals();
+      setError(null);
+    } catch (err) {
+      setError(err.message);
+      await loadGoals();
+    }
+  };
+
+  /** Reorder steps inside a goal — the step list is replaced wholesale.
+   * Indices address the sorted (started-first) list the section renders, and
+   * moves never cross the started/pending barrier. */
+  const handleMoveStep = async (goal, stepIndex, delta) => {
+    const steps = sortSteps(goal.steps);
+    const target = stepIndex + delta;
+    if (target < 0 || target >= steps.length) return;
+    const crossesBarrier =
+      (steps[stepIndex].status !== "pending") !==
+      (steps[target].status !== "pending");
+    if (crossesBarrier) return;
+    [steps[stepIndex], steps[target]] = [steps[target], steps[stepIndex]];
+    setBusyStep(`${goal._id}:${stepIndex}`);
+    try {
+      await goalsApi.update(goal._id, { steps });
+      await loadGoals();
+      setError(null);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusyStep(null);
     }
   };
 
@@ -107,14 +166,16 @@ export default function GoalsSection({ onTasksChanged }) {
   };
 
   const updateStepStatus = async (goal, stepIndex, status) => {
-    const steps = goal.steps.map((s, i) =>
+    const steps = sortSteps(goal.steps).map((s, i) =>
       i === stepIndex ? { ...s, status } : s,
     );
-    await goalsApi.update(goal._id, { steps });
+    // Re-sort so the step joins its new group (a started step rises to the
+    // under-progress block, a paused one drops back to the backlog)
+    await goalsApi.update(goal._id, { steps: sortSteps(steps) });
   };
 
   const handleStartStep = async (goal, stepIndex) => {
-    const step = goal.steps[stepIndex];
+    const step = sortSteps(goal.steps)[stepIndex];
     setBusyStep(`${goal._id}:${stepIndex}`);
     try {
       const header =
@@ -148,7 +209,7 @@ export default function GoalsSection({ onTasksChanged }) {
 
   /* under_progress → pending: back to the backlog, daily task removed. */
   const handlePauseStep = async (goal, stepIndex) => {
-    const step = goal.steps[stepIndex];
+    const step = sortSteps(goal.steps)[stepIndex];
     setBusyStep(`${goal._id}:${stepIndex}`);
     try {
       const header = await findOneStepHeader();
@@ -166,6 +227,43 @@ export default function GoalsSection({ onTasksChanged }) {
         `"${step.name}" paused — moved back to the backlog and removed from the daily list.`,
       );
       onTasksChanged();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusyStep(null);
+    }
+  };
+
+  /**
+   * Remove a step from the backlog. An under-progress step still owns a daily
+   * task under "One Step At A Time", so drop that first — same cleanup pause
+   * does, otherwise the todo keeps an orphan habit no goal points at.
+   */
+  const handleDeleteStep = async () => {
+    if (!deleteStepTarget) return;
+    const { goal, index } = deleteStepTarget;
+    const steps = sortSteps(goal.steps);
+    const step = steps[index];
+    setBusyStep(`${goal._id}:${index}`);
+    try {
+      if (step.status !== "pending") {
+        const header = await findOneStepHeader();
+        if (header) {
+          const tasks = await tasksApi.getAll(header._id);
+          const match = tasks.find(
+            (t) =>
+              t.name.trim().toLowerCase() === step.name.trim().toLowerCase(),
+          );
+          if (match) await tasksApi.remove(match._id);
+        }
+      }
+      await goalsApi.update(goal._id, {
+        steps: steps.filter((_, i) => i !== index),
+      });
+      await loadGoals();
+      setDeleteStepTarget(null);
+      setError(null);
+      if (step.status !== "pending") onTasksChanged();
     } catch (err) {
       setError(err.message);
     } finally {
@@ -206,18 +304,21 @@ export default function GoalsSection({ onTasksChanged }) {
       <View style={styles.toolbar}>
         <TouchableOpacity
           style={styles.addGoalBtn}
-          onPress={() => setGoalModalState({ mode: "add" })}
+          onPress={() => setAddGoalOpen(true)}
           activeOpacity={0.7}
         >
           <Text style={styles.addGoalText}>+ Add Goal</Text>
         </TouchableOpacity>
       </View>
 
-      {goals.map((goal) => {
+      {goals.map((goal, idx) => {
         // Anything non-pending counts (covers legacy statuses from old data)
         const underProgressCount = goal.steps.filter(
           (s) => s.status !== "pending",
         ).length;
+        // Under-progress steps render above the pending backlog; all step
+        // handlers index into this sorted list
+        const steps = sortSteps(goal.steps);
         return (
           <View key={goal._id} style={styles.section}>
             <View style={styles.headerRow}>
@@ -230,11 +331,24 @@ export default function GoalsSection({ onTasksChanged }) {
                     {underProgressCount}/{goal.steps.length} under progress
                   </Text>
                 )}
+                {/* Goal order is manual, like todo headers and projects —
+                    the server shifts neighbours to stay contiguous. */}
                 <TouchableOpacity
-                  style={styles.headerBtn}
-                  onPress={() => setGoalModalState({ mode: "edit", goal })}
+                  style={[styles.headerBtn, idx === 0 && styles.busyBtn]}
+                  onPress={() => handleMoveGoal(goal, -1)}
+                  disabled={idx === 0}
                 >
-                  <Ionicons name="pencil" size={16} color="#656d76" />
+                  <Ionicons name="arrow-up" size={16} color="#656d76" />
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.headerBtn,
+                    idx === goals.length - 1 && styles.busyBtn,
+                  ]}
+                  onPress={() => handleMoveGoal(goal, 1)}
+                  disabled={idx === goals.length - 1}
+                >
+                  <Ionicons name="arrow-down" size={16} color="#656d76" />
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={styles.headerBtn}
@@ -242,69 +356,112 @@ export default function GoalsSection({ onTasksChanged }) {
                 >
                   <Ionicons name="trash-outline" size={16} color="#e74c3c" />
                 </TouchableOpacity>
+                {/* Same trailing "+" the todo puts on a header, adding one
+                    step at a time instead of retyping the whole list. */}
+                <TouchableOpacity
+                  style={styles.headerBtn}
+                  onPress={() => setAddStepGoal(goal)}
+                >
+                  <Ionicons name="add" size={18} color="#656d76" />
+                </TouchableOpacity>
               </View>
             </View>
 
             <View style={styles.stepList}>
-              {goal.steps.map((step, i) => {
+              {steps.map((step, i) => {
                 const busy = busyStep === `${goal._id}:${i}`;
-                const isLast = i === goal.steps.length - 1;
+                const isLast = i === steps.length - 1;
                 const started = step.status !== "pending";
+                // Moves stay inside the step's own group — mirrors the todo's
+                // done/undone barrier
+                const canMoveUp =
+                  i > 0 && (steps[i - 1].status !== "pending") === started;
+                const canMoveDown =
+                  !isLast && (steps[i + 1].status !== "pending") === started;
                 return (
                   <View
                     key={`${step.name}-${i}`}
                     style={[styles.stepRow, isLast && styles.stepRowLast]}
                   >
-                    <View
+                    {/* Checkbox drives the step lifecycle: checked = under
+                        progress. Deliberately no done styling — a started
+                        step is active, not finished. */}
+                    <TouchableOpacity
                       style={[
-                        styles.stepMarker,
-                        started && styles.stepMarkerStarted,
+                        styles.stepCheckbox,
+                        started && styles.stepCheckboxChecked,
+                        busy && styles.busyBtn,
                       ]}
+                      onPress={() =>
+                        started
+                          ? handlePauseStep(goal, i)
+                          : handleStartStep(goal, i)
+                      }
+                      disabled={busy}
                     >
-                      <Text
+                      {started && (
+                        <Ionicons name="checkmark" size={14} color="#fff" />
+                      )}
+                    </TouchableOpacity>
+                    <View style={styles.stepBody}>
+                      <Text style={styles.stepName} numberOfLines={2}>
+                        {step.name}
+                      </Text>
+                      {/* Same slot the todo uses for the ECD badge. A started
+                          step is a 7-day recurring task there, so it gets the
+                          recurring styling too. */}
+                      <View
                         style={[
-                          styles.stepMarkerText,
-                          started && styles.stepMarkerTextStarted,
+                          styles.stepBadge,
+                          started && styles.stepBadgeStarted,
                         ]}
                       >
-                        {started ? "∞" : i + 1}
-                      </Text>
+                        <Text
+                          style={[
+                            styles.stepBadgeText,
+                            started && styles.stepBadgeTextStarted,
+                          ]}
+                        >
+                          {started ? "↻ Daily" : "Not started"}
+                        </Text>
+                      </View>
                     </View>
-                    <Text style={styles.stepName} numberOfLines={2}>
-                      {step.name}
-                    </Text>
+                    {/* Same action cluster the todo puts on a task */}
                     <View style={styles.stepActions}>
-                      {started ? (
-                        <TouchableOpacity
-                          style={[styles.iconBtn, busy && styles.busyBtn]}
-                          onPress={() => handlePauseStep(goal, i)}
-                          disabled={busy}
-                        >
-                          <Ionicons
-                            name="pause-outline"
-                            size={16}
-                            color="#656d76"
-                          />
-                        </TouchableOpacity>
-                      ) : (
-                        <TouchableOpacity
-                          style={[styles.startBtn, busy && styles.busyBtn]}
-                          onPress={() => handleStartStep(goal, i)}
-                          disabled={busy}
-                          activeOpacity={0.7}
-                        >
-                          <Text style={styles.startBtnText}>Start</Text>
-                        </TouchableOpacity>
-                      )}
+                      <TouchableOpacity
+                        style={[styles.iconBtn, !canMoveUp && styles.busyBtn]}
+                        onPress={() => handleMoveStep(goal, i, -1)}
+                        disabled={busy || !canMoveUp}
+                      >
+                        <Ionicons name="arrow-up" size={15} color="#656d76" />
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[
+                          styles.iconBtn,
+                          !canMoveDown && styles.busyBtn,
+                        ]}
+                        onPress={() => handleMoveStep(goal, i, 1)}
+                        disabled={busy || !canMoveDown}
+                      >
+                        <Ionicons name="arrow-down" size={15} color="#656d76" />
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.iconBtn}
+                        onPress={() => setDeleteStepTarget({ goal, index: i })}
+                        disabled={busy}
+                      >
+                        <Ionicons
+                          name="trash-outline"
+                          size={15}
+                          color="#e74c3c"
+                        />
+                      </TouchableOpacity>
                     </View>
                   </View>
                 );
               })}
               {goal.steps.length === 0 && (
-                <Text style={styles.noStepsText}>
-                  No steps yet — edit the goal to list the small habits that
-                  get you there.
-                </Text>
+                <Text style={styles.noStepsText}>No steps yet — add one!</Text>
               )}
             </View>
           </View>
@@ -322,10 +479,33 @@ export default function GoalsSection({ onTasksChanged }) {
 
       {/* Modals */}
       <GoalModal
-        visible={!!goalModalState}
-        goal={goalModalState?.mode === "edit" ? goalModalState.goal : undefined}
+        visible={addGoalOpen}
         onConfirm={handleSaveGoal}
-        onCancel={() => setGoalModalState(null)}
+        onCancel={() => setAddGoalOpen(false)}
+      />
+
+      <AddStepModal
+        visible={!!addStepGoal}
+        goalName={addStepGoal?.name}
+        busy={addingStep}
+        onConfirm={handleAddStep}
+        onCancel={() => setAddStepGoal(null)}
+      />
+
+      <ConfirmModal
+        visible={!!deleteStepTarget}
+        message={
+          deleteStepTarget
+            ? `Delete step "${sortSteps(deleteStepTarget.goal.steps)[deleteStepTarget.index].name}" from "${deleteStepTarget.goal.name}"?${
+                sortSteps(deleteStepTarget.goal.steps)[deleteStepTarget.index]
+                  .status !== "pending"
+                  ? ` Its daily task in "${ONE_STEP_HEADER}" is removed too.`
+                  : ""
+              }`
+            : ""
+        }
+        onConfirm={handleDeleteStep}
+        onCancel={() => setDeleteStepTarget(null)}
       />
 
       <ConfirmModal
@@ -461,57 +641,63 @@ const styles = StyleSheet.create({
   stepRowLast: {
     borderBottomWidth: 0,
   },
-  stepMarker: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    borderWidth: 1,
+  /* Step rows mirror the todo's TaskCard styling (square checkbox, inline
+     badge in the ECD slot) so the two lists feel identical. */
+  stepCheckbox: {
+    width: 22,
+    height: 22,
+    borderRadius: 4,
+    borderWidth: 2,
     borderColor: "#d0d7de",
     justifyContent: "center",
     alignItems: "center",
+    marginTop: 2,
   },
-  stepMarkerStarted: {
-    borderColor: "#1a7f37",
-    backgroundColor: "#f0fdf4",
+  stepCheckboxChecked: {
+    borderColor: "#6200ee",
+    backgroundColor: "#6200ee",
   },
-  stepMarkerText: {
-    fontSize: 11,
-    fontWeight: "600",
-    color: "#656d76",
-  },
-  stepMarkerTextStarted: {
-    color: "#1a7f37",
+  stepBody: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: 6,
   },
   stepName: {
-    flex: 1,
     fontSize: 15,
+    fontWeight: "500",
     color: "#1f2328",
   },
+  stepBadge: {
+    backgroundColor: "#f0f0f0",
+    borderRadius: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+  },
+  stepBadgeStarted: {
+    backgroundColor: "#e8f0fe",
+  },
+  stepBadgeText: {
+    fontSize: 11,
+    color: "#656d76",
+    fontWeight: "500",
+  },
+  stepBadgeTextStarted: {
+    color: "#1a73e8",
+  },
+  /* Move/delete cluster on a step row, mirroring the todo task actions */
   stepActions: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
-  },
-  startBtn: {
-    borderWidth: 1,
-    borderColor: "#bc4c00",
-    borderRadius: 8,
-    paddingVertical: 5,
-    paddingHorizontal: 12,
-  },
-  startBtnText: {
-    fontSize: 12,
-    fontWeight: "600",
-    color: "#bc4c00",
+    gap: 2,
   },
   iconBtn: {
     width: 28,
     height: 28,
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: "#d0d7de",
     justifyContent: "center",
     alignItems: "center",
+    borderRadius: 6,
   },
   busyBtn: {
     opacity: 0.5,

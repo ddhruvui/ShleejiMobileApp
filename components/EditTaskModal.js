@@ -55,6 +55,10 @@ export default function EditTaskModal({
   createdAt,
   updatedAt,
   ecd,
+  // Daily habit owned by a goal (under "One Step At A Time"). The goal links
+  // to this task by name, so name and schedule are locked — only notes stay
+  // editable.
+  goalManaged,
   onConfirm,
   onCancel,
 }) {
@@ -98,6 +102,13 @@ export default function EditTaskModal({
   const isPostpone = isPushedLater(ecd, previewEcd);
 
   function handleSave() {
+    // Goal-managed tasks save notes only — name and ecd pass through
+    // unchanged so the goal's name-based link can never drift.
+    if (goalManaged) {
+      onConfirm({ name: taskName, notes: draft, ecd });
+      return;
+    }
+
     const trimmedName = nameDraft.trim();
     if (!trimmedName) {
       setFormError("Task name is required.");
@@ -154,12 +165,23 @@ export default function EditTaskModal({
                 <Text style={styles.title}>{taskName}</Text>
 
                 <TextInput
-                  style={styles.nameInput}
+                  style={[
+                    styles.nameInput,
+                    goalManaged && styles.nameInputLocked,
+                  ]}
                   value={nameDraft}
                   onChangeText={setNameDraft}
                   placeholder="Task name"
                   placeholderTextColor="#999"
+                  editable={!goalManaged}
                 />
+
+                {goalManaged && (
+                  <Text style={styles.lockedHint}>
+                    Daily habit managed by its goal — name and schedule are
+                    locked.
+                  </Text>
+                )}
 
                 {formError && <Text style={styles.errorText}>{formError}</Text>}
 
@@ -177,18 +199,24 @@ export default function EditTaskModal({
                   </View>
                 )}
 
-                <EcdPicker
-                  mode={mode}
-                  setMode={setMode}
-                  dateVal={dateVal}
-                  setDateVal={setDateVal}
-                  dowVal={dowVal}
-                  setDowVal={setDowVal}
-                  domVal={domVal}
-                  setDomVal={setDomVal}
-                  yearVal={yearVal}
-                  setYearVal={setYearVal}
-                />
+                {goalManaged ? (
+                  <Text style={styles.lockedEcdText}>
+                    ↻ Every day, for life
+                  </Text>
+                ) : (
+                  <EcdPicker
+                    mode={mode}
+                    setMode={setMode}
+                    dateVal={dateVal}
+                    setDateVal={setDateVal}
+                    dowVal={dowVal}
+                    setDowVal={setDowVal}
+                    domVal={domVal}
+                    setDomVal={setDomVal}
+                    yearVal={yearVal}
+                    setYearVal={setYearVal}
+                  />
+                )}
 
                 {isPostpone && (
                   <View style={styles.reasonWrap}>
@@ -284,6 +312,21 @@ const styles = StyleSheet.create({
     color: "#1f2328",
     marginBottom: 12,
     backgroundColor: "#fafafa",
+  },
+  nameInputLocked: {
+    color: "#656d76",
+  },
+  lockedHint: {
+    fontSize: 12,
+    color: "#656d76",
+    fontStyle: "italic",
+    marginBottom: 10,
+  },
+  lockedEcdText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#1a7f37",
+    marginBottom: 16,
   },
   errorText: {
     color: "#e74c3c",

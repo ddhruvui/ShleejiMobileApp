@@ -51,6 +51,9 @@ export default function TaskCard({
   isLast,
   prevTaskDone,
   nextTaskDone,
+  // Daily habit under "One Step At A Time" — the goal links to it by name,
+  // so the edit modal locks name and schedule (notes/done stay editable)
+  goalManaged,
   onToggleDone,
   onEdit,
   onMoveUp,
@@ -153,6 +156,7 @@ export default function TaskCard({
         createdAt={task.createdAt}
         updatedAt={task.updatedAt}
         ecd={task.ecd}
+        goalManaged={goalManaged}
         onConfirm={(payload) => {
           onEdit(task._id, payload);
           setEditModalOpen(false);

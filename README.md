@@ -23,8 +23,9 @@ configured in `api/client.js`).
   dated task (editing it to a later date) offers an optional reason field — a
   reason-less postpone is treated as procrastination, a valid reason as a
   legitimate deferral by the AI coach
-- **Filter toggles** (combinable): **Focus** (due today), **Past** (overdue),
-  **By Date** (grouped by calendar date), **Insights** (see below),
+- **Filter toggles**: **By Date** (grouped by calendar date — today first,
+  then past dates, then future dates, with thick dividers between the
+  present, past and future sections), **Insights** (see below),
   **Events** (see below), **Goals** (see below), **Projects** (see below)
 - **Events** — reusable task bundles (e.g. "Burger Night" with its shopping
   list). "Add to todo" opens a date picker plus a checklist of the event's
@@ -35,17 +36,28 @@ configured in `api/client.js`).
   can be scheduled again and again
 - **Goals** — long-term aims (e.g. "Improve Health") broken into small
   steps/habits ("Wake up at 6", "Have 1 fruit a day"), listed in the order you
-  want to build them. A step is either paused (numbered) or **under
-  progress** (∞). **Start** puts it under progress: a daily recurring task
-  is created under a todo header named "One Step At A Time" (reused if it
-  already exists) and kept for life. The pause button takes it out of
-  progress: the daily task is removed and the step returns to the backlog.
-  The goal heading's badge (e.g. "1/4 under progress") rises on Start and
-  falls on pause. The two views stay in sync both ways: deleting the daily
-  task from the todo — or the whole "One Step At A Time" header — pauses
-  the matching step(s) automatically. Editing a goal edits its name and
-  step list (one step per line; steps that keep their name keep their
-  status)
+  want to build them. Steps render as todo task rows and are added the same
+  way: a `+` on the goal heading opens an add-step dialog that appends one
+  step, just as `+` on a todo header adds a task. A step is either paused
+  (unchecked, "Not started") or **under progress** (checked, "↻ Daily"); the
+  checkbox toggles between them. Checking it creates a daily recurring task
+  under a todo header named "One Step At A Time" (reused if it already
+  exists), kept for life; unchecking removes that task and returns the step
+  to the backlog. The goal heading's badge (e.g. "1/4 under progress")
+  tracks this. Goals are ordered with move up/down arrows on the heading (a
+  server-side contiguous priority, like headers and projects), and each step
+  has its own move up/down and delete — deleting an under-progress step
+  removes its daily task too, so the todo never keeps an orphan habit.
+  Under-progress steps always sort above the pending backlog (starting a
+  step lifts it into the top group) and the move arrows never cross that
+  boundary, mirroring the todo's undone-above-done barrier. The
+  two views stay in sync both ways: deleting the daily task from the todo —
+  or the whole "One Step At A Time" header — pauses the matching step(s)
+  automatically. Because the goal links to its task by name, editing a task
+  under "One Step At A Time" locks the name and schedule fields (notes and
+  done stay editable) so the link can't drift. A goal's name and its initial
+  step list are set when it is created; there is no goal-level edit, so
+  steps are managed individually afterwards
 - **Projects** — long term projects (e.g. "Automated Stock Market") broken
   into ordered tasks/steps ("get data from EODHD", "get data from Nasdaq",
   "deploy to cpu"). Projects are ordered with move up/down arrows
@@ -54,13 +66,14 @@ configured in `api/client.js`).
   done tasks always drop to the bottom, and moves never cross the
   done/undone barrier. Each task can carry free-text **notes** (shown under
   the task name), just like a todo task. Giving a task a **date** mirrors it
-  into the todo as a one-time date task under a header named after the
-  project (reused case-insensitively if it already exists), and the task's
-  notes are mirrored onto that todo task (an empty note falls back to a
+  into the todo as a one-time date task under the project's own header
+  (created on demand and kept in the projects' order by the backend), and
+  the task's notes are mirrored onto that todo task (an empty note falls back to a
   "Step towards …" default); the badge (e.g. "1/3 done") tracks completion.
   The two views stay in sync both ways: toggling done on
-  either side flips the other, editing the todo task's name or date updates
-  the project task (clearing the date sets it to none there), reordering on
+  either side flips the other, editing the todo task's name, date or notes
+  updates the project task (clearing the date sets it to none there, and the
+  "Step towards …" placeholder note mirrors back as empty), reordering on
   either side mirrors the relative order of linked tasks on the other,
   deleting the todo task (or its header) unlinks the project task (clearing
   its date), removing a task's date removes its todo entry, and renaming
@@ -117,7 +130,7 @@ Shleeji/
 │   ├── CallModal.js           # Add/edit call modal (name + biweekly/monthly)
 │   ├── InsightsSection.js     # Insights view (stats + AI report)
 │   ├── EventsSection.js  EventModal.js  ScheduleEventModal.js   # Events view
-│   ├── GoalsSection.js  GoalModal.js                            # Goals view
+│   ├── GoalsSection.js  GoalModal.js  AddStepModal.js            # Goals view
 │   └── ProjectsSection.js  ProjectModal.js  ProjectTaskModal.js # Projects view
 ├── api/
 │   ├── client.js              # fetch wrapper (base URL lives here)
@@ -129,7 +142,7 @@ Shleeji/
 │   ├── projects.js            # /projects CRUD (long term projects)
 │   └── insights.js            # /insights/stats, /insights/latest, /insights/generate
 └── utils/
-    ├── ecd.js                 # ECD due-today/past/date-key helpers
+    ├── ecd.js                 # ECD due-today/date-key helpers
     ├── goalSync.js            # goal step ↔ todo sync helpers
     ├── projectSync.js         # project task ↔ todo sync helpers
     └── notifications.js       # 8:30 AM / 4:00 PM daily reminders

@@ -7,6 +7,8 @@ import {
   TouchableOpacity,
   StyleSheet,
   Platform,
+  ScrollView,
+  KeyboardAvoidingView,
 } from "react-native";
 import DateTimePicker from "@react-native-community/datetimepicker";
 
@@ -97,100 +99,114 @@ export default function ProjectTaskModal({
         activeOpacity={1}
         onPress={onCancel}
       >
-        <TouchableOpacity
-          activeOpacity={1}
-          onPress={(e) => e.stopPropagation()}
+        {/* Same shell as the todo's Add/EditTaskModal: without the keyboard
+            avoider + capped scrollable box, the keyboard or the date picker
+            can push the confirm buttons off-screen with no way to reach
+            them — which reads as "cannot add a task" on small screens. */}
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          style={styles.keyboardView}
         >
-          <View style={styles.modal}>
-            <Text style={styles.title}>
-              {task ? "Edit task" : "Add task"}{" "}
-              <Text style={styles.titleFolder}>— {projectName}</Text>
-            </Text>
+          <TouchableOpacity
+            activeOpacity={1}
+            onPress={(e) => e.stopPropagation()}
+          >
+            <View style={styles.modal}>
+              <ScrollView showsVerticalScrollIndicator={false}>
+                <Text style={styles.title}>
+                  {task ? "Edit task" : "Add task"}{" "}
+                  <Text style={styles.titleFolder}>— {projectName}</Text>
+                </Text>
 
-            <TextInput
-              ref={nameRef}
-              style={styles.input}
-              placeholder="Task name…"
-              placeholderTextColor="#999"
-              value={name}
-              onChangeText={setName}
-              returnKeyType="done"
-            />
+                <TextInput
+                  ref={nameRef}
+                  style={styles.input}
+                  placeholder="Task name…"
+                  placeholderTextColor="#999"
+                  value={name}
+                  onChangeText={setName}
+                  returnKeyType="done"
+                />
 
-            <Text style={styles.label}>Due</Text>
-            <View style={styles.modeRow}>
-              {["none", "date"].map((m) => (
-                <TouchableOpacity
-                  key={m}
-                  style={[styles.modeBtn, mode === m && styles.modeBtnActive]}
-                  onPress={() => setMode(m)}
-                >
-                  <Text
-                    style={[
-                      styles.modeBtnText,
-                      mode === m && styles.modeBtnTextActive,
-                    ]}
-                  >
-                    {m === "none" ? "None" : "Date"}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
+                <Text style={styles.label}>Due</Text>
+                <View style={styles.modeRow}>
+                  {["none", "date"].map((m) => (
+                    <TouchableOpacity
+                      key={m}
+                      style={[
+                        styles.modeBtn,
+                        mode === m && styles.modeBtnActive,
+                      ]}
+                      onPress={() => setMode(m)}
+                    >
+                      <Text
+                        style={[
+                          styles.modeBtnText,
+                          mode === m && styles.modeBtnTextActive,
+                        ]}
+                      >
+                        {m === "none" ? "None" : "Date"}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
 
-            {mode === "date" && (
-              <View>
-                <TouchableOpacity
-                  style={styles.dateSelectorBtn}
-                  onPress={() => setShowDatePicker(true)}
-                >
-                  <Text style={styles.dateSelectorText}>
-                    {dateVal || "Select Date"}
-                  </Text>
-                  <Text style={styles.calendarIcon}>📅</Text>
-                </TouchableOpacity>
-                {showDatePicker && (
-                  <DateTimePicker
-                    value={getDateForPicker()}
-                    mode="date"
-                    display={Platform.OS === "ios" ? "spinner" : "default"}
-                    onChange={onDateChange}
-                  />
+                {mode === "date" && (
+                  <View>
+                    <TouchableOpacity
+                      style={styles.dateSelectorBtn}
+                      onPress={() => setShowDatePicker(true)}
+                    >
+                      <Text style={styles.dateSelectorText}>
+                        {dateVal || "Select Date"}
+                      </Text>
+                      <Text style={styles.calendarIcon}>📅</Text>
+                    </TouchableOpacity>
+                    {showDatePicker && (
+                      <DateTimePicker
+                        value={getDateForPicker()}
+                        mode="date"
+                        display={Platform.OS === "ios" ? "spinner" : "default"}
+                        onChange={onDateChange}
+                      />
+                    )}
+                    <Text style={styles.hint}>
+                      Will appear in the todo under "{projectName}"
+                    </Text>
+                  </View>
                 )}
-                <Text style={styles.hint}>
-                  Will appear in the todo under "{projectName}"
-                </Text>
-              </View>
-            )}
 
-            <Text style={styles.label}>Notes</Text>
-            <TextInput
-              style={styles.notesInput}
-              placeholder="Add notes…"
-              placeholderTextColor="#999"
-              value={notes}
-              onChangeText={setNotes}
-              multiline
-            />
+                <Text style={styles.label}>Notes</Text>
+                <TextInput
+                  style={styles.notesInput}
+                  placeholder="Add notes…"
+                  placeholderTextColor="#999"
+                  value={notes}
+                  onChangeText={setNotes}
+                  multiline
+                />
 
-            <View style={styles.actions}>
-              <TouchableOpacity style={styles.cancelBtn} onPress={onCancel}>
-                <Text style={styles.cancelText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[
-                  styles.confirmBtn,
-                  (!name.trim() || busy) && styles.disabledBtn,
-                ]}
-                onPress={handleSubmit}
-                disabled={!name.trim() || busy}
-              >
-                <Text style={styles.confirmText}>
-                  {task ? "Save" : "Add task"}
-                </Text>
-              </TouchableOpacity>
+                <View style={styles.actions}>
+                  <TouchableOpacity style={styles.cancelBtn} onPress={onCancel}>
+                    <Text style={styles.cancelText}>Cancel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[
+                      styles.confirmBtn,
+                      (!name.trim() || busy) && styles.disabledBtn,
+                    ]}
+                    onPress={handleSubmit}
+                    disabled={!name.trim() || busy}
+                  >
+                    <Text style={styles.confirmText}>
+                      {task ? "Save" : "Add task"}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </ScrollView>
             </View>
-          </View>
-        </TouchableOpacity>
+          </TouchableOpacity>
+        </KeyboardAvoidingView>
       </TouchableOpacity>
     </Modal>
   );
@@ -204,12 +220,17 @@ const styles = StyleSheet.create({
     alignItems: "center",
     padding: 24,
   },
+  keyboardView: {
+    width: "100%",
+    alignItems: "center",
+  },
   modal: {
     backgroundColor: "#fff",
     borderRadius: 12,
     padding: 24,
     width: 340,
     maxWidth: "90%",
+    maxHeight: "90%",
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.15,

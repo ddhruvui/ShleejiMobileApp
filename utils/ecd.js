@@ -17,7 +17,7 @@ const DOW_BY_JS_INDEX = [
 /**
  * Returns today's date as a YYYY-MM-DD key.
  */
-function todayDateKey() {
+export function todayDateKey() {
   const now = new Date();
   const y = now.getFullYear();
   const m = String(now.getMonth() + 1).padStart(2, "0");
@@ -58,25 +58,6 @@ export function isPushedLater(fromEcd, toEcd) {
   if (!fromEcd || !toEcd) return false;
   if (fromEcd.type !== "date" || toEcd.type !== "date") return false;
   return toEcd.value > fromEcd.value;
-}
-
-/**
- * Returns true if the task's ECD is in the past and not a yearly event.
- * This includes past dates, but excludes day_of_week, day_of_month, and day_of_year.
- */
-export function isTaskPast(ecd) {
-  if (!ecd) return false;
-  const now = new Date();
-
-  // Only show past dates; exclude recurring patterns (week, month, year)
-  if (ecd.type === "date") {
-    return (
-      ecd.value <
-      `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`
-    );
-  }
-
-  return false;
 }
 
 /**

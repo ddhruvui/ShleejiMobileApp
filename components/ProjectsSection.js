@@ -10,7 +10,6 @@ import { Ionicons } from "@expo/vector-icons";
 import * as projectsApi from "../api/projects";
 import * as headersApi from "../api/headers";
 import * as tasksApi from "../api/tasks";
-import { syncProjectHeaderOrder } from "../utils/projectSync";
 import ProjectModal from "./ProjectModal";
 import ProjectTaskModal from "./ProjectTaskModal";
 import ConfirmModal from "./ConfirmModal";
@@ -59,14 +58,21 @@ export default function ProjectsSection({ onTasksChanged }) {
 
   /* ── Todo link helpers ──
    * A project task with a date lives in the todo as a one-time date task
-   * under a header named after the project (reused case-insensitively when
-   * one exists, created otherwise — same find-or-create pattern as event
-   * scheduling and goal steps). */
+   * under the project's own header. The header is identified by `projectId`;
+   * creating it is the backend's job (see createTodoTask), including where it
+   * sits in the header list. */
 
-  const findProjectHeader = async (projectName) => {
+  const findProjectHeader = async (project) => {
     const all = await headersApi.getAll();
-    return all.find(
-      (h) => h.name.trim().toLowerCase() === projectName.trim().toLowerCase(),
+    return (
+      all.find((h) => h.projectId === project._id) ||
+      // Header created before projectId existed — matched by name until the
+      // server adopts it on the next project header create/cron run.
+      all.find(
+        (h) =>
+          h.projectId == null &&
+          h.name.trim().toLowerCase() === project.name.trim().toLowerCase(),
+      )
     );
   };
 
@@ -77,20 +83,26 @@ export default function ProjectsSection({ onTasksChanged }) {
   const todoNoteFor = (projectName, notes) =>
     notes && notes.trim() ? notes : `Step towards "${projectName}"`;
 
-  /** Create the linked todo task for a dated project task; returns its _id. */
-  const createTodoTask = async (projectName, taskName, date, notes) => {
-    const header =
-      (await findProjectHeader(projectName)) ||
-      (await headersApi.create({ name: projectName }));
+  /**
+   * Create the linked todo task for a dated project task; returns its _id.
+   *
+   * The header comes straight from `POST /headers { name, projectId }`: that
+   * call is idempotent per project (it returns the existing header, adopting
+   * a legacy name-matched one if needed) and the server places it in the
+   * projects' priority order, so there is nothing to find-or-create or
+   * re-order here.
+   */
+  const createTodoTask = async (project, taskName, date, notes) => {
+    const header = await headersApi.create({
+      name: project.name,
+      projectId: project._id,
+    });
     const created = await tasksApi.create({
       name: taskName,
       headerId: header._id,
-      notes: todoNoteFor(projectName, notes),
+      notes: todoNoteFor(project.name, notes),
       ecd: { type: "date", value: date },
     });
-    // Place the project header in the todo per the projects' priority order
-    // (a freshly created header would otherwise sit at the bottom).
-    await syncProjectHeaderOrder();
     return created._id;
   };
 
@@ -104,13 +116,10 @@ export default function ProjectsSection({ onTasksChanged }) {
       } else {
         const project = projectModalState.project;
         await projectsApi.update(project._id, { name });
-        // Keep the todo header in sync with the project name
+        // The server renames the linked todo header as part of the update;
+        // just reload the todo so it shows the new name.
         if (name.trim().toLowerCase() !== project.name.trim().toLowerCase()) {
-          const header = await findProjectHeader(project.name);
-          if (header) {
-            await headersApi.update(header._id, { name });
-            onTasksChanged();
-          }
+          onTasksChanged();
         }
       }
       await loadProjects();
@@ -128,6 +137,9 @@ export default function ProjectsSection({ onTasksChanged }) {
       await loadProjects();
       setDeleteProjectTarget(null);
       setError(null);
+      // The server unlinked the project's header and closed the block, so the
+      // todo's header order changed even though no task did.
+      onTasksChanged();
     } catch (err) {
       setError(err.message);
     }
@@ -138,8 +150,6 @@ export default function ProjectsSection({ onTasksChanged }) {
       await projectsApi.update(project._id, {
         priority: project.priority + delta,
       });
-      // Mirror the new project order onto the todo's project headers
-      await syncProjectHeaderOrder();
       await loadProjects();
       onTasksChanged();
       setError(null);
@@ -169,7 +179,7 @@ export default function ProjectsSection({ onTasksChanged }) {
         let todoTaskId = null;
         if (draft.date) {
           todoTaskId = await createTodoTask(
-            project.name,
+            project,
             draft.name,
             draft.date,
             draft.notes,
@@ -206,7 +216,7 @@ export default function ProjectsSection({ onTasksChanged }) {
             }
           } else if (!current.done) {
             todoTaskId = await createTodoTask(
-              project.name,
+              project,
               draft.name,
               draft.date,
               draft.notes,
@@ -266,7 +276,7 @@ export default function ProjectsSection({ onTasksChanged }) {
         // Undoing after the cron consumed the link: the dated task returns
         // to the todo
         todoTaskId = await createTodoTask(
-          project.name,
+          project,
           task.name,
           task.date,
           task.notes,
@@ -299,7 +309,7 @@ export default function ProjectsSection({ onTasksChanged }) {
       const moved = project.tasks[taskIndex];
       const other = project.tasks[target];
       if (moved.todoTaskId && other.todoTaskId) {
-        const header = await findProjectHeader(project.name);
+        const header = await findProjectHeader(project);
         if (header) {
           const todoTasks = await tasksApi.getAll(header._id);
           const movedTodo = todoTasks.find((t) => t._id === moved.todoTaskId);
@@ -453,8 +463,13 @@ export default function ProjectsSection({ onTasksChanged }) {
                 return (
                   <View
                     key={`${task.name}-${taskIdx}`}
-                    style={[styles.taskRow, isLast && styles.taskRowLast]}
+                    style={[
+                      styles.taskRow,
+                      task.done && styles.taskRowDone,
+                      isLast && styles.taskRowLast,
+                    ]}
                   >
+                    {/* Same square checkbox as the todo's TaskCard */}
                     <TouchableOpacity
                       style={[
                         styles.taskCheck,
@@ -469,69 +484,69 @@ export default function ProjectsSection({ onTasksChanged }) {
                       )}
                     </TouchableOpacity>
                     <View style={styles.taskMain}>
-                      <Text
-                        style={[
-                          styles.taskName,
-                          task.done && styles.taskNameDone,
-                        ]}
-                        numberOfLines={2}
-                      >
-                        {task.name}
-                      </Text>
-                      {!!task.notes && (
+                      <View style={styles.taskLabelRow}>
                         <Text
                           style={[
-                            styles.taskNotes,
-                            task.done && styles.taskNotesDone,
+                            styles.taskName,
+                            task.done && styles.taskNameDone,
                           ]}
-                          numberOfLines={3}
+                          numberOfLines={2}
                         >
-                          {task.notes}
+                          {task.name}
+                        </Text>
+                        {/* Same slot the todo uses for the ECD badge */}
+                        <View style={styles.taskEcdBadge}>
+                          <Text style={styles.taskEcdText}>
+                            {task.date ? formatTaskDate(task.date) : "No date"}
+                          </Text>
+                        </View>
+                      </View>
+                      {!!task.notes && (
+                        <Text style={styles.taskNotes} numberOfLines={1}>
+                          → {task.notes}
                         </Text>
                       )}
                     </View>
-                    {task.date && (
-                      <Text
-                        style={[
-                          styles.taskDate,
-                          task.done && styles.taskDateDone,
-                        ]}
-                      >
-                        {formatTaskDate(task.date)}
-                      </Text>
-                    )}
                     <View style={styles.taskActions}>
                       <TouchableOpacity
-                        style={[
-                          styles.iconBtn,
-                          (busy || !canMoveUp) && styles.busyBtn,
-                        ]}
-                        onPress={() => handleMoveTask(project, taskIdx, -1)}
-                        disabled={busy || !canMoveUp}
-                      >
-                        <Ionicons name="arrow-up" size={14} color="#656d76" />
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        style={[
-                          styles.iconBtn,
-                          (busy || !canMoveDown) && styles.busyBtn,
-                        ]}
-                        onPress={() => handleMoveTask(project, taskIdx, 1)}
-                        disabled={busy || !canMoveDown}
-                      >
-                        <Ionicons name="arrow-down" size={14} color="#656d76" />
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        style={[styles.iconBtn, busy && styles.busyBtn]}
+                        style={[styles.actionBtn, busy && styles.busyBtn]}
                         onPress={() =>
                           setTaskModalState({ project, taskIndex: taskIdx })
                         }
                         disabled={busy}
                       >
-                        <Ionicons name="pencil" size={14} color="#656d76" />
+                        <Ionicons name="pencil" size={16} color="#656d76" />
                       </TouchableOpacity>
                       <TouchableOpacity
-                        style={[styles.iconBtn, busy && styles.busyBtn]}
+                        style={[
+                          styles.actionBtn,
+                          (busy || !canMoveUp) && styles.busyBtn,
+                        ]}
+                        onPress={() => handleMoveTask(project, taskIdx, -1)}
+                        disabled={busy || !canMoveUp}
+                      >
+                        <Ionicons
+                          name="arrow-up"
+                          size={16}
+                          color={!busy && canMoveUp ? "#656d76" : "#ccc"}
+                        />
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[
+                          styles.actionBtn,
+                          (busy || !canMoveDown) && styles.busyBtn,
+                        ]}
+                        onPress={() => handleMoveTask(project, taskIdx, 1)}
+                        disabled={busy || !canMoveDown}
+                      >
+                        <Ionicons
+                          name="arrow-down"
+                          size={16}
+                          color={!busy && canMoveDown ? "#656d76" : "#ccc"}
+                        />
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.actionBtn, busy && styles.busyBtn]}
                         onPress={() =>
                           setDeleteTaskTarget({ project, taskIndex: taskIdx })
                         }
@@ -539,7 +554,7 @@ export default function ProjectsSection({ onTasksChanged }) {
                       >
                         <Ionicons
                           name="trash-outline"
-                          size={14}
+                          size={16}
                           color="#e74c3c"
                         />
                       </TouchableOpacity>
@@ -715,76 +730,79 @@ const styles = StyleSheet.create({
   taskList: {
     paddingHorizontal: 14,
   },
+  /* Task rows mirror the todo's TaskCard styling (square checkbox, inline
+     ECD badge, "→ notes" line, borderless action icons) so the two lists
+     feel identical. */
   taskRow: {
     flexDirection: "row",
-    alignItems: "center",
+    alignItems: "flex-start",
     gap: 10,
-    paddingVertical: 8,
+    paddingVertical: 10,
     borderBottomWidth: 1,
     borderBottomColor: "#eaeef2",
+  },
+  taskRowDone: {
+    opacity: 0.6,
   },
   taskRowLast: {
     borderBottomWidth: 0,
   },
   taskCheck: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    borderWidth: 1,
+    width: 22,
+    height: 22,
+    borderRadius: 4,
+    borderWidth: 2,
     borderColor: "#d0d7de",
     justifyContent: "center",
     alignItems: "center",
+    marginTop: 2,
   },
   taskCheckDone: {
-    borderColor: "#1a7f37",
-    backgroundColor: "#1a7f37",
+    borderColor: "#6200ee",
+    backgroundColor: "#6200ee",
   },
   taskMain: {
     flex: 1,
   },
+  taskLabelRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: 6,
+  },
   taskName: {
     fontSize: 15,
+    fontWeight: "500",
     color: "#1f2328",
   },
   taskNameDone: {
     textDecorationLine: "line-through",
     color: "#656d76",
   },
-  taskNotes: {
-    fontSize: 12,
-    color: "#656d76",
-    marginTop: 2,
-  },
-  taskNotesDone: {
-    opacity: 0.7,
-  },
-  taskDate: {
-    fontSize: 11,
-    fontWeight: "600",
-    color: "#656d76",
-    borderWidth: 1,
-    borderColor: "#d0d7de",
-    borderRadius: 999,
-    paddingVertical: 2,
+  taskEcdBadge: {
+    backgroundColor: "#f0f0f0",
+    borderRadius: 10,
     paddingHorizontal: 8,
-    overflow: "hidden",
+    paddingVertical: 2,
   },
-  taskDateDone: {
-    opacity: 0.6,
+  taskEcdText: {
+    fontSize: 11,
+    color: "#656d76",
+    fontWeight: "500",
+  },
+  taskNotes: {
+    fontSize: 13,
+    color: "#656d76",
+    marginTop: 3,
+    fontStyle: "italic",
   },
   taskActions: {
     flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
+    gap: 2,
   },
-  iconBtn: {
-    width: 26,
-    height: 26,
+  actionBtn: {
+    padding: 6,
     borderRadius: 6,
-    borderWidth: 1,
-    borderColor: "#d0d7de",
-    justifyContent: "center",
-    alignItems: "center",
   },
   busyBtn: {
     opacity: 0.4,

@@ -20,12 +20,7 @@ import InsightsSection from "../components/InsightsSection";
 import EventsSection from "../components/EventsSection";
 import GoalsSection from "../components/GoalsSection";
 import ProjectsSection from "../components/ProjectsSection";
-import {
-  isTaskDueToday,
-  isTaskPast,
-  getEcdDateKey,
-  formatDateKey,
-} from "../utils/ecd";
+import { getEcdDateKey, formatDateKey, todayDateKey } from "../utils/ecd";
 import { syncDailyReminders } from "../utils/notifications";
 import {
   isOneStepHeaderName,
@@ -45,8 +40,6 @@ export default function TodoScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
   const [actionError, setActionError] = useState(null);
-  const [focusMode, setFocusMode] = useState(false);
-  const [pastMode, setPastMode] = useState(false);
   const [byDateMode, setByDateMode] = useState(false);
   const [insightsMode, setInsightsMode] = useState(false);
   const [eventsMode, setEventsMode] = useState(false);
@@ -228,9 +221,14 @@ export default function TodoScreen() {
         ...(payload.reason ? { reason: payload.reason } : {}),
       });
       await reloadHeaderTasks(headerId);
-      // A task linked from a long-term project mirrors its name and date
-      // there (a cleared/recurring ECD clears the project date)
-      await syncProjectTasksForTodoEdit(taskId, payload.name, payload.ecd);
+      // A task linked from a long-term project mirrors its name, date and
+      // notes there (a cleared/recurring ECD clears the project date)
+      await syncProjectTasksForTodoEdit(
+        taskId,
+        payload.name,
+        payload.ecd,
+        payload.notes,
+      );
       setActionError(null);
     } catch (err) {
       setActionError(err.message);
@@ -313,24 +311,21 @@ export default function TodoScreen() {
 
   const addTaskHeader = headers.find((h) => h._id === addTaskHeaderId);
 
-  /* ── Shared Focus/Past filter (applies in both views) ── */
-  const matchesFilter = (task) => {
-    if (focusMode && pastMode)
-      return isTaskDueToday(task.ecd) || isTaskPast(task.ecd);
-    if (focusMode) return isTaskDueToday(task.ecd);
-    if (pastMode) return isTaskPast(task.ecd);
-    return true;
-  };
+  // Daily habit tasks under "One Step At A Time" are linked to their goal
+  // step by name — TaskCard locks name/schedule edits for them.
+  const oneStepHeaderIds = new Set(
+    headers.filter((h) => isOneStepHeaderName(h.name)).map((h) => h._id),
+  );
 
-  /* ── By Date view: group filtered tasks by their calendar date ── */
-  const byDateGroups = (() => {
+  /* ── By Date view: group tasks by calendar date into present, past and
+     future sections (today first, then old dates, then future ones) ── */
+  const byDateSections = (() => {
     if (!byDateMode) return [];
     const groups = new Map();
     const noDate = [];
     headers.forEach((header) => {
       header.tasks.forEach((task) => {
         if (task.done) return; // drop done tasks before grouping by date
-        if (!matchesFilter(task)) return;
         const key = getEcdDateKey(task.ecd);
         if (!key) {
           if (!task.ecd) noDate.push({ task, headerPriority: header.priority });
@@ -355,15 +350,23 @@ export default function TodoScreen() {
         label: formatDateKey(key),
         tasks: sortTasks(items),
       }));
+    const today = todayDateKey();
+    const present = dated.filter((g) => g.key === today);
+    const past = dated.filter((g) => g.key < today);
+    const future = dated.filter((g) => g.key > today);
     if (noDate.length > 0) {
       // undated tasks always come last
-      dated.push({
+      future.push({
         key: "__no_date__",
         label: "No date",
         tasks: sortTasks(noDate),
       });
     }
-    return dated;
+    return [
+      { key: "present", groups: present },
+      { key: "past", groups: past },
+      { key: "future", groups: future },
+    ].filter((section) => section.groups.length > 0);
   })();
 
   if (loading) {
@@ -408,50 +411,6 @@ export default function TodoScreen() {
 
       {/* Filter navbar */}
       <View style={styles.filterBar}>
-        <TouchableOpacity
-          style={[
-            styles.toggleBtn,
-            focusMode && styles.toggleBtnActive,
-          ]}
-          onPress={() => setFocusMode((prev) => !prev)}
-          activeOpacity={0.7}
-        >
-          <Ionicons
-            name="radio-button-on-outline"
-            size={16}
-            color={focusMode ? "#1e88e5" : "#656d76"}
-          />
-          <Text
-            style={[
-              styles.toggleText,
-              focusMode && styles.toggleTextActive,
-            ]}
-          >
-            Focus
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[
-            styles.toggleBtn,
-            pastMode && styles.toggleBtnActive,
-          ]}
-          onPress={() => setPastMode((prev) => !prev)}
-          activeOpacity={0.7}
-        >
-          <Ionicons
-            name="time-outline"
-            size={16}
-            color={pastMode ? "#1e88e5" : "#656d76"}
-          />
-          <Text
-            style={[
-              styles.toggleText,
-              pastMode && styles.toggleTextActive,
-            ]}
-          >
-            Past
-          </Text>
-        </TouchableOpacity>
         <TouchableOpacity
           style={[
             styles.toggleBtn,
@@ -611,10 +570,7 @@ export default function TodoScreen() {
           !projectsMode &&
           !byDateMode &&
           headers.map((header, idx) => {
-            const visibleTasks = header.tasks.filter(matchesFilter);
-
-            if ((focusMode || pastMode) && visibleTasks.length === 0)
-              return null;
+            const visibleTasks = header.tasks;
 
             return (
             <View key={header._id} style={styles.section}>
@@ -702,6 +658,7 @@ export default function TodoScreen() {
                         ? visibleTasks[taskIdx + 1].done
                         : undefined
                     }
+                    goalManaged={oneStepHeaderIds.has(header._id)}
                     onToggleDone={handleToggleDone(header._id)}
                     onEdit={handleEditTask(header._id)}
                     onMoveUp={handleMoveTaskUp(header._id)}
@@ -725,83 +682,51 @@ export default function TodoScreen() {
           headers.length === 0 && (
           <Text style={styles.emptyText}>No headers yet — add one!</Text>
         )}
-        {!insightsMode &&
-          !eventsMode &&
-          !goalsMode &&
-          !projectsMode &&
-          !byDateMode &&
-          focusMode &&
-          pastMode &&
-          headers.length > 0 &&
-          headers.every(
-            (h) =>
-              !h.tasks.some((t) => isTaskDueToday(t.ecd) || isTaskPast(t.ecd)),
-          ) && (
-            <Text style={styles.emptyText}>No tasks due today or in the past.</Text>
-          )}
-        {!insightsMode &&
-          !eventsMode &&
-          !goalsMode &&
-          !projectsMode &&
-          !byDateMode &&
-          focusMode &&
-          !pastMode &&
-          headers.length > 0 &&
-          headers.every((h) => !h.tasks.some((t) => isTaskDueToday(t.ecd))) && (
-            <Text style={styles.emptyText}>No tasks due today.</Text>
-          )}
-        {!insightsMode &&
-          !eventsMode &&
-          !goalsMode &&
-          !projectsMode &&
-          !byDateMode &&
-          !focusMode &&
-          pastMode &&
-          headers.length > 0 &&
-          headers.every((h) => !h.tasks.some((t) => isTaskPast(t.ecd))) && (
-            <Text style={styles.emptyText}>No past tasks.</Text>
-          )}
 
-        {/* By Date view: sections headed by date */}
+        {/* By Date view: present, past and future sections headed by date,
+            separated by thick dividers */}
         {!insightsMode &&
           !eventsMode &&
           !goalsMode &&
           !projectsMode &&
           byDateMode &&
-          byDateGroups.map((group) => (
-            <View key={group.key} style={styles.section}>
-              <View style={styles.headerRow}>
-                <Text style={styles.headerName} numberOfLines={1}>
-                  {group.label}
-                </Text>
-              </View>
-              <View style={styles.taskList}>
-                {group.tasks.map((task) => (
-                  <TaskCard
-                    key={task._id}
-                    task={task}
-                    isFirst
-                    isLast
-                    onToggleDone={handleToggleDone(task.headerId)}
-                    onEdit={handleEditTask(task.headerId)}
-                    onMoveUp={handleMoveTaskUp(task.headerId)}
-                    onMoveDown={handleMoveTaskDown(task.headerId)}
-                    onDelete={handleDeleteTask(task.headerId)}
-                  />
-                ))}
-              </View>
-            </View>
+          byDateSections.map((section, sectionIdx) => (
+            <React.Fragment key={section.key}>
+              {sectionIdx > 0 && <View style={styles.byDateDivider} />}
+              {section.groups.map((group) => (
+                <View key={group.key} style={styles.section}>
+                  <View style={styles.headerRow}>
+                    <Text style={styles.headerName} numberOfLines={1}>
+                      {group.label}
+                    </Text>
+                  </View>
+                  <View style={styles.taskList}>
+                    {group.tasks.map((task) => (
+                      <TaskCard
+                        key={task._id}
+                        task={task}
+                        isFirst
+                        isLast
+                        goalManaged={oneStepHeaderIds.has(task.headerId)}
+                        onToggleDone={handleToggleDone(task.headerId)}
+                        onEdit={handleEditTask(task.headerId)}
+                        onMoveUp={handleMoveTaskUp(task.headerId)}
+                        onMoveDown={handleMoveTaskDown(task.headerId)}
+                        onDelete={handleDeleteTask(task.headerId)}
+                      />
+                    ))}
+                  </View>
+                </View>
+              ))}
+            </React.Fragment>
           ))}
         {!insightsMode &&
           !eventsMode &&
           !goalsMode &&
           !projectsMode &&
           byDateMode &&
-          byDateGroups.length === 0 && (
-          <Text style={styles.emptyText}>
-            No dated tasks to show
-            {focusMode || pastMode ? " for this filter" : ""}.
-          </Text>
+          byDateSections.length === 0 && (
+          <Text style={styles.emptyText}>No dated tasks to show.</Text>
         )}
 
         {/* Bottom spacer for tab bar */}
@@ -973,6 +898,13 @@ const styles = StyleSheet.create({
     color: "#e74c3c",
     flex: 1,
     marginRight: 8,
+  },
+  byDateDivider: {
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: "#d0d7de",
+    marginBottom: 24,
+    marginTop: 4,
   },
   section: {
     marginBottom: 24,
