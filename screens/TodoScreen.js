@@ -13,11 +13,13 @@ import { Ionicons } from "@expo/vector-icons";
 import * as headersApi from "../api/headers";
 import * as tasksApi from "../api/tasks";
 import TaskCard from "../components/TaskCard";
+import AddButton from "../components/AddButton";
 import ConfirmModal from "../components/ConfirmModal";
 import AddTaskModal from "../components/AddTaskModal";
 import HeaderModal from "../components/HeaderModal";
 import InsightsSection from "../components/InsightsSection";
 import EventsSection from "../components/EventsSection";
+import LifeEventsSection from "../components/LifeEventsSection";
 import GoalsSection from "../components/GoalsSection";
 import ProjectsSection from "../components/ProjectsSection";
 import { getEcdDateKey, formatDateKey, todayDateKey } from "../utils/ecd";
@@ -33,6 +35,11 @@ import {
   syncProjectTaskOrderForTodo,
   unlinkProjectTasksForTodoTasks,
 } from "../utils/projectSync";
+import {
+  syncLifeEventsForTodoDone,
+  syncLifeEventsForTodoEdit,
+  unlinkLifeEventsForTodoTasks,
+} from "../utils/lifeEventSync";
 
 export default function TodoScreen() {
   const [headers, setHeaders] = useState([]);
@@ -43,6 +50,7 @@ export default function TodoScreen() {
   const [byDateMode, setByDateMode] = useState(false);
   const [insightsMode, setInsightsMode] = useState(false);
   const [eventsMode, setEventsMode] = useState(false);
+  const [lifeEventsMode, setLifeEventsMode] = useState(false);
   const [goalsMode, setGoalsMode] = useState(false);
   const [projectsMode, setProjectsMode] = useState(false);
 
@@ -145,6 +153,8 @@ export default function TodoScreen() {
       }
       // Cascade-deleted tasks may back dated project tasks — unlink them
       await unlinkProjectTasksForTodoTasks(cascadedTaskIds);
+      // …and may be this year's occurrence of a life event — unlink those too
+      await unlinkLifeEventsForTodoTasks(cascadedTaskIds);
       setDeleteTarget(null);
       setActionError(null);
     } catch (err) {
@@ -206,6 +216,8 @@ export default function TodoScreen() {
       await reloadHeaderTasks(headerId);
       // A task linked from a long-term project mirrors its done state there
       await syncProjectTasksForTodoDone(taskId, !task.done);
+      // A task linked from a life event mirrors its done state there too
+      await syncLifeEventsForTodoDone(taskId, !task.done);
       setActionError(null);
     } catch (err) {
       setActionError(err.message);
@@ -229,6 +241,9 @@ export default function TodoScreen() {
         payload.ecd,
         payload.notes,
       );
+      // A task linked from a life event mirrors its name there (the annual
+      // date is deliberately never synced from the todo task's ECD)
+      await syncLifeEventsForTodoEdit(taskId, payload.name);
       setActionError(null);
     } catch (err) {
       setActionError(err.message);
@@ -300,6 +315,8 @@ export default function TodoScreen() {
       }
       // A task backing a dated project task unlinks it there
       await unlinkProjectTasksForTodoTasks([deleteTarget.id]);
+      // A task backing a life event's yearly occurrence unlinks it there too
+      await unlinkLifeEventsForTodoTasks([deleteTarget.id]);
       setDeleteTarget(null);
       setActionError(null);
     } catch (err) {
@@ -400,13 +417,6 @@ export default function TodoScreen() {
       {/* Title bar - Fixed Header */}
       <View style={styles.titleBar}>
         <Text style={styles.title}>Task At Hand</Text>
-        <TouchableOpacity
-          style={styles.addHeaderBtn}
-          onPress={() => setHeaderModalState({ mode: "add" })}
-          activeOpacity={0.7}
-        >
-          <Text style={styles.addHeaderText}>+ Add Header</Text>
-        </TouchableOpacity>
       </View>
 
       {/* Filter navbar */}
@@ -480,6 +490,28 @@ export default function TodoScreen() {
         <TouchableOpacity
           style={[
             styles.toggleBtn,
+            lifeEventsMode && styles.toggleBtnActive,
+          ]}
+          onPress={() => setLifeEventsMode((prev) => !prev)}
+          activeOpacity={0.7}
+        >
+          <Ionicons
+            name="gift-outline"
+            size={16}
+            color={lifeEventsMode ? "#1e88e5" : "#656d76"}
+          />
+          <Text
+            style={[
+              styles.toggleText,
+              lifeEventsMode && styles.toggleTextActive,
+            ]}
+          >
+            Life Events
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[
+            styles.toggleBtn,
             goalsMode && styles.toggleBtnActive,
           ]}
           onPress={() => setGoalsMode((prev) => !prev)}
@@ -545,6 +577,20 @@ export default function TodoScreen() {
           </View>
         )}
 
+        {/* Add Header on its own row, todo view only (mirrors web FE) */}
+        {!insightsMode &&
+          !eventsMode &&
+          !lifeEventsMode &&
+          !goalsMode &&
+          !projectsMode && (
+          <View style={styles.addHeaderRow}>
+            <AddButton
+              label="Add Header"
+              onPress={() => setHeaderModalState({ mode: "add" })}
+            />
+          </View>
+        )}
+
         {/* Insights view */}
         {insightsMode && <InsightsSection />}
 
@@ -553,19 +599,27 @@ export default function TodoScreen() {
           <EventsSection onTasksAdded={loadAll} />
         )}
 
+        {/* Life Events view */}
+        {!insightsMode && !eventsMode && lifeEventsMode && (
+          <LifeEventsSection onTasksChanged={loadAll} />
+        )}
+
         {/* Goals view */}
-        {!insightsMode && !eventsMode && goalsMode && (
+        {!insightsMode && !eventsMode && !lifeEventsMode && goalsMode && (
           <GoalsSection onTasksChanged={loadAll} />
         )}
 
         {/* Projects view */}
-        {!insightsMode && !eventsMode && !goalsMode && projectsMode && (
-          <ProjectsSection onTasksChanged={loadAll} />
-        )}
+        {!insightsMode &&
+          !eventsMode &&
+          !lifeEventsMode &&
+          !goalsMode &&
+          projectsMode && <ProjectsSection onTasksChanged={loadAll} />}
 
         {/* Headers */}
         {!insightsMode &&
           !eventsMode &&
+          !lifeEventsMode &&
           !goalsMode &&
           !projectsMode &&
           !byDateMode &&
@@ -676,6 +730,7 @@ export default function TodoScreen() {
 
         {!insightsMode &&
           !eventsMode &&
+          !lifeEventsMode &&
           !goalsMode &&
           !projectsMode &&
           !byDateMode &&
@@ -687,6 +742,7 @@ export default function TodoScreen() {
             separated by thick dividers */}
         {!insightsMode &&
           !eventsMode &&
+          !lifeEventsMode &&
           !goalsMode &&
           !projectsMode &&
           byDateMode &&
@@ -722,6 +778,7 @@ export default function TodoScreen() {
           ))}
         {!insightsMode &&
           !eventsMode &&
+          !lifeEventsMode &&
           !goalsMode &&
           !projectsMode &&
           byDateMode &&
@@ -871,16 +928,10 @@ const styles = StyleSheet.create({
   toggleTextActive: {
     color: "#1e88e5",
   },
-  addHeaderBtn: {
-    backgroundColor: "#fff",
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    borderRadius: 8,
-  },
-  addHeaderText: {
-    fontSize: 14,
-    fontWeight: "700",
-    color: "#1e88e5",
+  addHeaderRow: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    marginBottom: 16,
   },
   actionErrorBar: {
     flexDirection: "row",

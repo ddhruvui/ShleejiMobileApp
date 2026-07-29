@@ -10,6 +10,7 @@ import { Ionicons } from "@expo/vector-icons";
 import * as eventsApi from "../api/events";
 import * as headersApi from "../api/headers";
 import * as tasksApi from "../api/tasks";
+import AddButton from "./AddButton";
 import EventModal from "./EventModal";
 import ScheduleEventModal from "./ScheduleEventModal";
 import ConfirmModal from "./ConfirmModal";
@@ -136,13 +137,10 @@ export default function EventsSection({ onTasksAdded }) {
       )}
 
       <View style={styles.toolbar}>
-        <TouchableOpacity
-          style={styles.addEventBtn}
+        <AddButton
+          label="Add Event"
           onPress={() => setEventModalState({ mode: "add" })}
-          activeOpacity={0.7}
-        >
-          <Text style={styles.addEventText}>+ Add Event</Text>
-        </TouchableOpacity>
+        />
       </View>
 
       {events.map((event) => (
@@ -169,7 +167,7 @@ export default function EventsSection({ onTasksAdded }) {
                 onPress={() => setScheduleState({ event })}
                 activeOpacity={0.7}
               >
-                <Ionicons name="add" size={16} color="#fff" />
+                <Ionicons name="add" size={16} color="#656d76" />
                 <Text style={styles.scheduleBtnText}>Add to todo</Text>
               </TouchableOpacity>
             </View>
@@ -281,17 +279,6 @@ const styles = StyleSheet.create({
     justifyContent: "flex-end",
     marginBottom: 16,
   },
-  addEventBtn: {
-    backgroundColor: "#6200ee",
-    paddingVertical: 10,
-    paddingHorizontal: 20,
-    borderRadius: 8,
-  },
-  addEventText: {
-    fontSize: 14,
-    fontWeight: "700",
-    color: "#fff",
-  },
   section: {
     marginBottom: 24,
     borderWidth: 1,
@@ -333,7 +320,9 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
-    backgroundColor: "#1a7f37",
+    backgroundColor: "#fff",
+    borderWidth: 1,
+    borderColor: "#d0d7de",
     paddingVertical: 6,
     paddingHorizontal: 10,
     borderRadius: 8,
@@ -342,7 +331,7 @@ const styles = StyleSheet.create({
   scheduleBtnText: {
     fontSize: 12,
     fontWeight: "600",
-    color: "#fff",
+    color: "#656d76",
   },
   taskList: {
     paddingHorizontal: 14,

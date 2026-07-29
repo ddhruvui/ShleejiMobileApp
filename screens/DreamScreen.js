@@ -14,6 +14,7 @@ import {
 import * as ImagePicker from "expo-image-picker";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
+import AddButton from "../components/AddButton";
 
 const { width, height } = Dimensions.get("window");
 const COLUMN_COUNT = 2;
@@ -185,28 +186,29 @@ export default function DreamScreen() {
     <View style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.title}>Dream Board</Text>
-        <TouchableOpacity
-          style={styles.addButton}
-          onPress={pickImage}
-          activeOpacity={0.7}
-        >
-          <Text style={styles.addButtonText}>+ Add</Text>
-        </TouchableOpacity>
       </View>
 
       {photos.length === 0 ? (
-        <View style={styles.emptyContainer}>
-          <Ionicons name="images-outline" size={80} color="#ccc" />
-          <Text style={styles.emptyText}>No dreams yet</Text>
-          <Text style={styles.emptySubtext}>
-            Tap the + button to add inspiration
-          </Text>
+        <View style={styles.emptyWrap}>
+          <View style={styles.toolbar}>
+            <AddButton label="Add Photo" onPress={pickImage} />
+          </View>
+          <View style={styles.emptyContainer}>
+            <Ionicons name="images-outline" size={80} color="#ccc" />
+            <Text style={styles.emptyText}>No dreams yet</Text>
+            <Text style={styles.emptySubtext}>
+              Tap the + button to add inspiration
+            </Text>
+          </View>
         </View>
       ) : (
         <ScrollView
           contentContainerStyle={styles.photosGrid}
           showsVerticalScrollIndicator={false}
         >
+          <View style={styles.toolbar}>
+            <AddButton label="Add Photo" onPress={pickImage} />
+          </View>
           <View style={styles.masonryContainer}>
             <View style={styles.masonryColumn}>
               {leftColumn.map(renderPhoto)}
@@ -333,18 +335,16 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     color: "#fff",
   },
-  addButton: {
-    backgroundColor: "#fff",
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    borderRadius: 8,
+  toolbar: {
     flexDirection: "row",
-    alignItems: "center",
+    justifyContent: "flex-end",
+    marginBottom: 16,
+    paddingTop: 8,
+    paddingHorizontal: 8,
   },
-  addButtonText: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: "#1e88e5",
+  emptyWrap: {
+    flex: 1,
+    padding: 8,
   },
   emptyContainer: {
     flex: 1,

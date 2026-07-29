@@ -10,6 +10,7 @@ import { Ionicons } from "@expo/vector-icons";
 import * as projectsApi from "../api/projects";
 import * as headersApi from "../api/headers";
 import * as tasksApi from "../api/tasks";
+import AddButton from "./AddButton";
 import ProjectModal from "./ProjectModal";
 import ProjectTaskModal from "./ProjectTaskModal";
 import ConfirmModal from "./ConfirmModal";
@@ -389,13 +390,10 @@ export default function ProjectsSection({ onTasksChanged }) {
       )}
 
       <View style={styles.toolbar}>
-        <TouchableOpacity
-          style={styles.addProjectBtn}
+        <AddButton
+          label="Add Project"
           onPress={() => setProjectModalState({ mode: "add" })}
-          activeOpacity={0.7}
-        >
-          <Text style={styles.addProjectText}>+ Add Project</Text>
-        </TouchableOpacity>
+        />
       </View>
 
       {projects.map((project, idx) => {
@@ -666,17 +664,6 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "flex-end",
     marginBottom: 16,
-  },
-  addProjectBtn: {
-    backgroundColor: "#6200ee",
-    paddingVertical: 10,
-    paddingHorizontal: 20,
-    borderRadius: 8,
-  },
-  addProjectText: {
-    fontSize: 14,
-    fontWeight: "700",
-    color: "#fff",
   },
   section: {
     marginBottom: 24,

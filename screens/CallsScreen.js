@@ -10,6 +10,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as callsApi from "../api/calls";
+import AddButton from "../components/AddButton";
 import CallModal from "../components/CallModal";
 import ConfirmModal from "../components/ConfirmModal";
 
@@ -155,12 +156,20 @@ export default function CallsScreen() {
 
     if (calls.length === 0 && !actionError) {
       return (
-        <View style={styles.centered}>
-          <Ionicons name="call-outline" size={80} color="#ccc" />
-          <Text style={styles.emptyText}>No calls yet</Text>
-          <Text style={styles.emptySubtext}>
-            Tap the + button to add someone to ring biweekly or monthly
-          </Text>
+        <View style={styles.emptyWrap}>
+          <View style={styles.toolbar}>
+            <AddButton
+              label="Add Call"
+              onPress={() => setModalState({ mode: "add" })}
+            />
+          </View>
+          <View style={styles.centered}>
+            <Ionicons name="call-outline" size={80} color="#ccc" />
+            <Text style={styles.emptyText}>No calls yet</Text>
+            <Text style={styles.emptySubtext}>
+              Tap the + button to add someone to ring biweekly or monthly
+            </Text>
+          </View>
         </View>
       );
     }
@@ -173,6 +182,13 @@ export default function CallsScreen() {
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
       >
+        <View style={styles.toolbar}>
+          <AddButton
+            label="Add Call"
+            onPress={() => setModalState({ mode: "add" })}
+          />
+        </View>
+
         {actionError && (
           <View style={styles.actionErrorBar}>
             <Text style={styles.actionErrorText}>
@@ -207,13 +223,6 @@ export default function CallsScreen() {
     <View style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.title}>Calls</Text>
-        <TouchableOpacity
-          style={styles.addButton}
-          onPress={() => setModalState({ mode: "add" })}
-          activeOpacity={0.7}
-        >
-          <Text style={styles.addButtonText}>+ Add</Text>
-        </TouchableOpacity>
       </View>
 
       {renderBody()}
@@ -259,18 +268,14 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     color: "#fff",
   },
-  addButton: {
-    backgroundColor: "#fff",
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    borderRadius: 8,
+  toolbar: {
     flexDirection: "row",
-    alignItems: "center",
+    justifyContent: "flex-end",
+    marginBottom: 16,
   },
-  addButtonText: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: "#1e88e5",
+  emptyWrap: {
+    flex: 1,
+    padding: 16,
   },
   centered: {
     flex: 1,

@@ -10,6 +10,7 @@ import { Ionicons } from "@expo/vector-icons";
 import * as goalsApi from "../api/goals";
 import * as headersApi from "../api/headers";
 import * as tasksApi from "../api/tasks";
+import AddButton from "./AddButton";
 import GoalModal from "./GoalModal";
 import AddStepModal from "./AddStepModal";
 import ConfirmModal from "./ConfirmModal";
@@ -302,13 +303,7 @@ export default function GoalsSection({ onTasksChanged }) {
       )}
 
       <View style={styles.toolbar}>
-        <TouchableOpacity
-          style={styles.addGoalBtn}
-          onPress={() => setAddGoalOpen(true)}
-          activeOpacity={0.7}
-        >
-          <Text style={styles.addGoalText}>+ Add Goal</Text>
-        </TouchableOpacity>
+        <AddButton label="Add Goal" onPress={() => setAddGoalOpen(true)} />
       </View>
 
       {goals.map((goal, idx) => {
@@ -566,17 +561,6 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "flex-end",
     marginBottom: 16,
-  },
-  addGoalBtn: {
-    backgroundColor: "#6200ee",
-    paddingVertical: 10,
-    paddingHorizontal: 20,
-    borderRadius: 8,
-  },
-  addGoalText: {
-    fontSize: 14,
-    fontWeight: "700",
-    color: "#fff",
   },
   section: {
     marginBottom: 24,

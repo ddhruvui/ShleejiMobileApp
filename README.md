@@ -26,7 +26,8 @@ configured in `api/client.js`).
 - **Filter toggles**: **By Date** (grouped by calendar date — today first,
   then past dates, then future dates, with thick dividers between the
   present, past and future sections), **Insights** (see below),
-  **Events** (see below), **Goals** (see below), **Projects** (see below)
+  **Events** (see below), **Life Events** (see below), **Goals** (see below),
+  **Projects** (see below)
 - **Events** — reusable task bundles (e.g. "Burger Night" with its shopping
   list). "Add to todo" opens a date picker plus a checklist of the event's
   tasks (all selected by default, tap to unmark); confirming adds the selected
@@ -34,6 +35,22 @@ configured in `api/client.js`).
   (reused if it already exists, so later additions join it). Each task row
   also has a per-task quick add. Templates are never consumed, so an event
   can be scheduled again and again
+- **Life Events** — annually recurring dates (e.g. "Wife's birthday" on
+  7 Mar), listed in priority order with move up/down arrows (a server-side
+  contiguous priority, like headers and projects). Each row shows a done
+  checkbox, the name, the annual date ("↻ 7 Mar") and an "in todo" badge
+  while this year's task is linked. Every year on the event's day, the
+  **backend cron** adds a one-time date task named after the event to the
+  todo under an "Events" header (reused if it already exists) and links it.
+  The two views stay in sync both ways: toggling done on either side flips
+  the other, renaming either side renames the other (only the name — the
+  annual date is never moved by rescheduling this year's todo task), and
+  deleting the todo task (or its header) unlinks the event without touching
+  its done state. Add/edit uses a month + day picker (Feb 29 allowed; the
+  cron fires it on Feb 28 in non-leap years) producing the "D/M" date.
+  Deleting a life event keeps this year's todo task; when the nightly cron
+  deletes the done todo task it marks the event done and clears the link —
+  the event itself is never deleted and fires again next year
 - **Goals** — long-term aims (e.g. "Improve Health") broken into small
   steps/habits ("Wake up at 6", "Have 1 fruit a day"), listed in the order you
   want to build them. Steps render as todo task rows and are added the same
@@ -130,6 +147,7 @@ Shleeji/
 │   ├── CallModal.js           # Add/edit call modal (name + biweekly/monthly)
 │   ├── InsightsSection.js     # Insights view (stats + AI report)
 │   ├── EventsSection.js  EventModal.js  ScheduleEventModal.js   # Events view
+│   ├── LifeEventsSection.js  LifeEventModal.js                   # Life Events view
 │   ├── GoalsSection.js  GoalModal.js  AddStepModal.js            # Goals view
 │   └── ProjectsSection.js  ProjectModal.js  ProjectTaskModal.js # Projects view
 ├── api/
@@ -138,6 +156,7 @@ Shleeji/
 │   ├── affirmations.js        # /affirmations CRUD (daily affirmations)
 │   ├── calls.js               # /calls CRUD (biweekly/monthly call list)
 │   ├── events.js              # /events CRUD (reusable task bundles)
+│   ├── lifeevents.js          # /lifeevents CRUD (annually recurring dates)
 │   ├── goals.js               # /goals CRUD (habit backlogs)
 │   ├── projects.js            # /projects CRUD (long term projects)
 │   └── insights.js            # /insights/stats, /insights/latest, /insights/generate
@@ -145,6 +164,7 @@ Shleeji/
     ├── ecd.js                 # ECD due-today/date-key helpers
     ├── goalSync.js            # goal step ↔ todo sync helpers
     ├── projectSync.js         # project task ↔ todo sync helpers
+    ├── lifeEventSync.js       # life event ↔ todo sync helpers
     └── notifications.js       # 8:30 AM / 4:00 PM daily reminders
 ```
 
@@ -175,6 +195,10 @@ npm run publish -- "message" # OTA update to preview branch
   endpoints (it shows an error banner until then). Completed project steps
   are marked done by the backend's nightly cron when it deletes the finished
   todo task.
+- The Life Events view requires the backend to be deployed with the
+  `/lifeevents` endpoints (it shows an error banner until then). The yearly
+  todo task is created by the backend's cron on the event's day, and the
+  cron marks the event done when it deletes the finished todo task.
 - The Affirmations tab requires the backend to be deployed with the
   `/affirmations` endpoints (it shows an error state with Retry until then).
 - The Calls tab requires the backend to be deployed with the `/calls`
