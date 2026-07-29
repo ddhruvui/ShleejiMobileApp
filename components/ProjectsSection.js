@@ -1,4 +1,10 @@
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, {
+  useState,
+  useEffect,
+  useCallback,
+  useRef,
+  useImperativeHandle,
+} from "react";
 import {
   StyleSheet,
   View,
@@ -10,7 +16,6 @@ import { Ionicons } from "@expo/vector-icons";
 import * as projectsApi from "../api/projects";
 import * as headersApi from "../api/headers";
 import * as tasksApi from "../api/tasks";
-import AddButton from "./AddButton";
 import ProjectModal from "./ProjectModal";
 import ProjectTaskModal from "./ProjectTaskModal";
 import ConfirmModal from "./ConfirmModal";
@@ -33,7 +38,7 @@ function formatTaskDate(date) {
     : `${label}/${String(y % 100).padStart(2, "0")}`;
 }
 
-export default function ProjectsSection({ onTasksChanged }) {
+export default function ProjectsSection({ onTasksChanged, addRef }) {
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -49,6 +54,12 @@ export default function ProjectsSection({ onTasksChanged }) {
   const [taskModalState, setTaskModalState] = useState(null);
   const [deleteProjectTarget, setDeleteProjectTarget] = useState(null);
   const [deleteTaskTarget, setDeleteTaskTarget] = useState(null);
+
+  // This panel has no toolbar of its own: TodoScreen's title-bar "+" opens the
+  // add-project modal through this handle while the Projects view is showing.
+  useImperativeHandle(addRef, () => ({
+    openAdd: () => setProjectModalState({ mode: "add" }),
+  }));
 
   const loadProjects = useCallback(async () => {
     try {
@@ -398,13 +409,6 @@ export default function ProjectsSection({ onTasksChanged }) {
         </View>
       )}
 
-      <View style={styles.toolbar}>
-        <AddButton
-          label="Add Project"
-          onPress={() => setProjectModalState({ mode: "add" })}
-        />
-      </View>
-
       {projects.map((project, idx) => {
         const doneCount = project.tasks.filter((t) => t.done).length;
         return (
@@ -438,7 +442,9 @@ export default function ProjectsSection({ onTasksChanged }) {
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={styles.headerBtn}
-                  onPress={() => setProjectModalState({ mode: "edit", project })}
+                  onPress={() =>
+                    setProjectModalState({ mode: "edit", project })
+                  }
                 >
                   <Ionicons name="pencil" size={16} color="#656d76" />
                 </TouchableOpacity>
@@ -583,11 +589,11 @@ export default function ProjectsSection({ onTasksChanged }) {
 
       {projects.length === 0 && (
         <Text style={styles.emptyText}>
-          No projects yet — add one! A long term project (e.g. "Automated
-          Stock Market") lists the steps that get it done (e.g. "get data
-          from EODHD"). Give a step a date and it shows up in the todo under
-          the project's name; once it's done and the nightly cleanup runs, it
-          leaves the todo but stays here as a completed step.
+          No projects yet — add one! A long term project (e.g. "Automated Stock
+          Market") lists the steps that get it done (e.g. "get data from
+          EODHD"). Give a step a date and it shows up in the todo under the
+          project's name; once it's done and the nightly cleanup runs, it leaves
+          the todo but stays here as a completed step.
         </Text>
       )}
 
@@ -670,11 +676,6 @@ const styles = StyleSheet.create({
     color: "#e74c3c",
     flex: 1,
     marginRight: 8,
-  },
-  toolbar: {
-    flexDirection: "row",
-    justifyContent: "flex-end",
-    marginBottom: 16,
   },
   section: {
     marginBottom: 24,

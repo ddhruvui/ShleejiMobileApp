@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
   StyleSheet,
   View,
@@ -75,6 +75,13 @@ export default function TodoScreen() {
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [addTaskHeaderId, setAddTaskHeaderId] = useState(null);
   const [headerModalState, setHeaderModalState] = useState(null);
+
+  // Each panel owns its own add modal, so the title-bar "+" reaches into the
+  // one that is showing (see titleBarAdd below).
+  const eventsAddRef = useRef(null);
+  const lifeEventsAddRef = useRef(null);
+  const goalsAddRef = useRef(null);
+  const projectsAddRef = useRef(null);
 
   /* ── Load all headers and their tasks ── */
   const loadAll = useCallback(async () => {
@@ -403,6 +410,37 @@ export default function TodoScreen() {
     ].filter((section) => section.groups.length > 0);
   })();
 
+  /* The one "+" in the title bar acts on whichever view is showing — same
+     precedence as the render order below. Panels expose their add modal via
+     addRef; Insights has nothing to add, so the button hides there. */
+  const titleBarAdd = (() => {
+    if (insightsMode) return null;
+    if (eventsMode)
+      return {
+        label: "Add event",
+        onPress: () => eventsAddRef.current?.openAdd(),
+      };
+    if (lifeEventsMode)
+      return {
+        label: "Add life event",
+        onPress: () => lifeEventsAddRef.current?.openAdd(),
+      };
+    if (goalsMode)
+      return {
+        label: "Add goal",
+        onPress: () => goalsAddRef.current?.openAdd(),
+      };
+    if (projectsMode)
+      return {
+        label: "Add project",
+        onPress: () => projectsAddRef.current?.openAdd(),
+      };
+    return {
+      label: "Add header",
+      onPress: () => setHeaderModalState({ mode: "add" }),
+    };
+  })();
+
   if (loading) {
     return (
       <SafeAreaView style={styles.container}>
@@ -431,18 +469,18 @@ export default function TodoScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* Title bar - Fixed Header */}
+      {/* Title bar - Fixed Header, with the current view's "+" beside the title */}
       <View style={styles.titleBar}>
         <Text style={styles.title}>Task At Hand</Text>
+        {titleBarAdd && (
+          <AddButton label={titleBarAdd.label} onPress={titleBarAdd.onPress} />
+        )}
       </View>
 
       {/* Filter navbar */}
       <View style={styles.filterBar}>
         <TouchableOpacity
-          style={[
-            styles.toggleBtn,
-            byDateMode && styles.toggleBtnActive,
-          ]}
+          style={[styles.toggleBtn, byDateMode && styles.toggleBtnActive]}
           onPress={() => setByDateMode((prev) => !prev)}
           activeOpacity={0.7}
         >
@@ -452,19 +490,13 @@ export default function TodoScreen() {
             color={byDateMode ? "#1e88e5" : "#656d76"}
           />
           <Text
-            style={[
-              styles.toggleText,
-              byDateMode && styles.toggleTextActive,
-            ]}
+            style={[styles.toggleText, byDateMode && styles.toggleTextActive]}
           >
             By Date
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
-          style={[
-            styles.toggleBtn,
-            insightsMode && styles.toggleBtnActive,
-          ]}
+          style={[styles.toggleBtn, insightsMode && styles.toggleBtnActive]}
           onPress={() => togglePanelMode(setInsightsMode)}
           activeOpacity={0.7}
         >
@@ -474,19 +506,13 @@ export default function TodoScreen() {
             color={insightsMode ? "#1e88e5" : "#656d76"}
           />
           <Text
-            style={[
-              styles.toggleText,
-              insightsMode && styles.toggleTextActive,
-            ]}
+            style={[styles.toggleText, insightsMode && styles.toggleTextActive]}
           >
             Insights
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
-          style={[
-            styles.toggleBtn,
-            eventsMode && styles.toggleBtnActive,
-          ]}
+          style={[styles.toggleBtn, eventsMode && styles.toggleBtnActive]}
           onPress={() => togglePanelMode(setEventsMode)}
           activeOpacity={0.7}
         >
@@ -496,19 +522,13 @@ export default function TodoScreen() {
             color={eventsMode ? "#1e88e5" : "#656d76"}
           />
           <Text
-            style={[
-              styles.toggleText,
-              eventsMode && styles.toggleTextActive,
-            ]}
+            style={[styles.toggleText, eventsMode && styles.toggleTextActive]}
           >
             Events
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
-          style={[
-            styles.toggleBtn,
-            lifeEventsMode && styles.toggleBtnActive,
-          ]}
+          style={[styles.toggleBtn, lifeEventsMode && styles.toggleBtnActive]}
           onPress={() => togglePanelMode(setLifeEventsMode)}
           activeOpacity={0.7}
         >
@@ -527,10 +547,7 @@ export default function TodoScreen() {
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
-          style={[
-            styles.toggleBtn,
-            goalsMode && styles.toggleBtnActive,
-          ]}
+          style={[styles.toggleBtn, goalsMode && styles.toggleBtnActive]}
           onPress={() => togglePanelMode(setGoalsMode)}
           activeOpacity={0.7}
         >
@@ -540,19 +557,13 @@ export default function TodoScreen() {
             color={goalsMode ? "#1e88e5" : "#656d76"}
           />
           <Text
-            style={[
-              styles.toggleText,
-              goalsMode && styles.toggleTextActive,
-            ]}
+            style={[styles.toggleText, goalsMode && styles.toggleTextActive]}
           >
             Goals
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
-          style={[
-            styles.toggleBtn,
-            projectsMode && styles.toggleBtnActive,
-          ]}
+          style={[styles.toggleBtn, projectsMode && styles.toggleBtnActive]}
           onPress={() => togglePanelMode(setProjectsMode)}
           activeOpacity={0.7}
         >
@@ -562,10 +573,7 @@ export default function TodoScreen() {
             color={projectsMode ? "#1e88e5" : "#656d76"}
           />
           <Text
-            style={[
-              styles.toggleText,
-              projectsMode && styles.toggleTextActive,
-            ]}
+            style={[styles.toggleText, projectsMode && styles.toggleTextActive]}
           >
             Projects
           </Text>
@@ -594,36 +602,25 @@ export default function TodoScreen() {
           </View>
         )}
 
-        {/* Add Header on its own row, todo view only (mirrors web FE) */}
-        {!insightsMode &&
-          !eventsMode &&
-          !lifeEventsMode &&
-          !goalsMode &&
-          !projectsMode && (
-          <View style={styles.addHeaderRow}>
-            <AddButton
-              label="Add Header"
-              onPress={() => setHeaderModalState({ mode: "add" })}
-            />
-          </View>
-        )}
-
         {/* Insights view */}
         {insightsMode && <InsightsSection />}
 
         {/* Events view */}
         {!insightsMode && eventsMode && (
-          <EventsSection onTasksAdded={loadAll} />
+          <EventsSection onTasksAdded={loadAll} addRef={eventsAddRef} />
         )}
 
         {/* Life Events view */}
         {!insightsMode && !eventsMode && lifeEventsMode && (
-          <LifeEventsSection onTasksChanged={loadAll} />
+          <LifeEventsSection
+            onTasksChanged={loadAll}
+            addRef={lifeEventsAddRef}
+          />
         )}
 
         {/* Goals view */}
         {!insightsMode && !eventsMode && !lifeEventsMode && goalsMode && (
-          <GoalsSection onTasksChanged={loadAll} />
+          <GoalsSection onTasksChanged={loadAll} addRef={goalsAddRef} />
         )}
 
         {/* Projects view */}
@@ -631,7 +628,9 @@ export default function TodoScreen() {
           !eventsMode &&
           !lifeEventsMode &&
           !goalsMode &&
-          projectsMode && <ProjectsSection onTasksChanged={loadAll} />}
+          projectsMode && (
+            <ProjectsSection onTasksChanged={loadAll} addRef={projectsAddRef} />
+          )}
 
         {/* Headers */}
         {!insightsMode &&
@@ -644,106 +643,112 @@ export default function TodoScreen() {
             const visibleTasks = header.tasks;
 
             return (
-            <View key={header._id} style={styles.section}>
-              {/* Header heading */}
-              <View style={styles.headerRow}>
-                <Text style={styles.headerName} numberOfLines={1}>
-                  {header.name}
-                </Text>
-                <View style={styles.headerActions}>
-                  <TouchableOpacity
-                    style={[
-                      styles.headerBtn,
-                      idx === 0 && styles.headerBtnDisabled,
-                    ]}
-                    onPress={() => handleMoveHeaderUp(header._id)}
-                    disabled={idx === 0}
-                  >
-                    <Ionicons
-                      name="arrow-up"
-                      size={16}
-                      color={idx === 0 ? "#ccc" : "#656d76"}
+              <View key={header._id} style={styles.section}>
+                {/* Header heading */}
+                <View style={styles.headerRow}>
+                  <Text style={styles.headerName} numberOfLines={1}>
+                    {header.name}
+                  </Text>
+                  <View style={styles.headerActions}>
+                    <TouchableOpacity
+                      style={[
+                        styles.headerBtn,
+                        idx === 0 && styles.headerBtnDisabled,
+                      ]}
+                      onPress={() => handleMoveHeaderUp(header._id)}
+                      disabled={idx === 0}
+                    >
+                      <Ionicons
+                        name="arrow-up"
+                        size={16}
+                        color={idx === 0 ? "#ccc" : "#656d76"}
+                      />
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[
+                        styles.headerBtn,
+                        idx === headers.length - 1 && styles.headerBtnDisabled,
+                      ]}
+                      onPress={() => handleMoveHeaderDown(header._id)}
+                      disabled={idx === headers.length - 1}
+                    >
+                      <Ionicons
+                        name="arrow-down"
+                        size={16}
+                        color={idx === headers.length - 1 ? "#ccc" : "#656d76"}
+                      />
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.headerBtn}
+                      onPress={() =>
+                        setHeaderModalState({
+                          mode: "edit",
+                          headerId: header._id,
+                          name: header.name,
+                        })
+                      }
+                    >
+                      <Ionicons name="pencil" size={16} color="#656d76" />
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.headerBtn}
+                      onPress={() =>
+                        setDeleteTarget({
+                          type: "header",
+                          headerId: header._id,
+                          id: header._id,
+                          name: header.name,
+                        })
+                      }
+                    >
+                      <Ionicons
+                        name="trash-outline"
+                        size={16}
+                        color="#e74c3c"
+                      />
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.headerBtn}
+                      onPress={() => setAddTaskHeaderId(header._id)}
+                    >
+                      <Ionicons name="add" size={18} color="#6200ee" />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+
+                {/* Task list */}
+                <View style={styles.taskList}>
+                  {visibleTasks.map((task, taskIdx) => (
+                    <TaskCard
+                      key={task._id}
+                      task={task}
+                      isFirst={taskIdx === 0}
+                      isLast={taskIdx === visibleTasks.length - 1}
+                      prevTaskDone={
+                        taskIdx > 0 ? visibleTasks[taskIdx - 1].done : undefined
+                      }
+                      nextTaskDone={
+                        taskIdx < visibleTasks.length - 1
+                          ? visibleTasks[taskIdx + 1].done
+                          : undefined
+                      }
+                      goalManaged={oneStepHeaderIds.has(header._id)}
+                      onToggleDone={handleToggleDone(header._id)}
+                      onEdit={handleEditTask(header._id)}
+                      onMoveUp={handleMoveTaskUp(header._id)}
+                      onMoveDown={handleMoveTaskDown(header._id)}
+                      onDelete={handleDeleteTask(header._id)}
                     />
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[
-                      styles.headerBtn,
-                      idx === headers.length - 1 && styles.headerBtnDisabled,
-                    ]}
-                    onPress={() => handleMoveHeaderDown(header._id)}
-                    disabled={idx === headers.length - 1}
-                  >
-                    <Ionicons
-                      name="arrow-down"
-                      size={16}
-                      color={idx === headers.length - 1 ? "#ccc" : "#656d76"}
-                    />
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={styles.headerBtn}
-                    onPress={() =>
-                      setHeaderModalState({
-                        mode: "edit",
-                        headerId: header._id,
-                        name: header.name,
-                      })
-                    }
-                  >
-                    <Ionicons name="pencil" size={16} color="#656d76" />
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={styles.headerBtn}
-                    onPress={() =>
-                      setDeleteTarget({
-                        type: "header",
-                        headerId: header._id,
-                        id: header._id,
-                        name: header.name,
-                      })
-                    }
-                  >
-                    <Ionicons name="trash-outline" size={16} color="#e74c3c" />
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={styles.headerBtn}
-                    onPress={() => setAddTaskHeaderId(header._id)}
-                  >
-                    <Ionicons name="add" size={18} color="#6200ee" />
-                  </TouchableOpacity>
+                  ))}
+                  {visibleTasks.length === 0 && (
+                    <Text style={styles.emptyText}>
+                      No tasks yet — add one!
+                    </Text>
+                  )}
                 </View>
               </View>
-
-              {/* Task list */}
-              <View style={styles.taskList}>
-                {visibleTasks.map((task, taskIdx) => (
-                  <TaskCard
-                    key={task._id}
-                    task={task}
-                    isFirst={taskIdx === 0}
-                    isLast={taskIdx === visibleTasks.length - 1}
-                    prevTaskDone={
-                      taskIdx > 0 ? visibleTasks[taskIdx - 1].done : undefined
-                    }
-                    nextTaskDone={
-                      taskIdx < visibleTasks.length - 1
-                        ? visibleTasks[taskIdx + 1].done
-                        : undefined
-                    }
-                    goalManaged={oneStepHeaderIds.has(header._id)}
-                    onToggleDone={handleToggleDone(header._id)}
-                    onEdit={handleEditTask(header._id)}
-                    onMoveUp={handleMoveTaskUp(header._id)}
-                    onMoveDown={handleMoveTaskDown(header._id)}
-                    onDelete={handleDeleteTask(header._id)}
-                  />
-                ))}
-                {visibleTasks.length === 0 && (
-                  <Text style={styles.emptyText}>No tasks yet — add one!</Text>
-                )}
-              </View>
-            </View>
-          );
-        })}
+            );
+          })}
 
         {!insightsMode &&
           !eventsMode &&
@@ -752,8 +757,8 @@ export default function TodoScreen() {
           !projectsMode &&
           !byDateMode &&
           headers.length === 0 && (
-          <Text style={styles.emptyText}>No headers yet — add one!</Text>
-        )}
+            <Text style={styles.emptyText}>No headers yet — add one!</Text>
+          )}
 
         {/* By Date view: present, past and future sections headed by date,
             separated by thick dividers */}
@@ -800,8 +805,8 @@ export default function TodoScreen() {
           !projectsMode &&
           byDateMode &&
           byDateSections.length === 0 && (
-          <Text style={styles.emptyText}>No dated tasks to show.</Text>
-        )}
+            <Text style={styles.emptyText}>No dated tasks to show.</Text>
+          )}
 
         {/* Bottom spacer for tab bar */}
         <View style={{ height: 120 }} />
@@ -944,11 +949,6 @@ const styles = StyleSheet.create({
   },
   toggleTextActive: {
     color: "#1e88e5",
-  },
-  addHeaderRow: {
-    flexDirection: "row",
-    justifyContent: "flex-end",
-    marginBottom: 16,
   },
   actionErrorBar: {
     flexDirection: "row",

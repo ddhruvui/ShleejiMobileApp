@@ -134,12 +134,6 @@ export default function AffirmationsScreen() {
     if (affirmations.length === 0 && !actionError) {
       return (
         <View style={styles.emptyWrap}>
-          <View style={styles.toolbar}>
-            <AddButton
-              label="Add Affirmation"
-              onPress={() => setModalState({ mode: "add" })}
-            />
-          </View>
           <View style={styles.centered}>
             <Ionicons name="heart-outline" size={80} color="#ccc" />
             <Text style={styles.emptyText}>No affirmations yet</Text>
@@ -159,13 +153,6 @@ export default function AffirmationsScreen() {
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
       >
-        <View style={styles.toolbar}>
-          <AddButton
-            label="Add Affirmation"
-            onPress={() => setModalState({ mode: "add" })}
-          />
-        </View>
-
         {actionError && (
           <View style={styles.actionErrorBar}>
             <Text style={styles.actionErrorText}>
@@ -195,13 +182,19 @@ export default function AffirmationsScreen() {
     <View style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.title}>Affirmations</Text>
+        <AddButton
+          label="Add affirmation"
+          onPress={() => setModalState({ mode: "add" })}
+        />
       </View>
 
       {renderBody()}
 
       <AffirmationModal
         visible={modalState !== null}
-        affirmation={modalState?.mode === "edit" ? modalState.affirmation : null}
+        affirmation={
+          modalState?.mode === "edit" ? modalState.affirmation : null
+        }
         onConfirm={modalState?.mode === "edit" ? handleEdit : handleAdd}
         onDelete={handleDelete}
         onCancel={() => setModalState(null)}
@@ -233,11 +226,6 @@ const styles = StyleSheet.create({
     fontSize: 32,
     fontWeight: "800",
     color: "#fff",
-  },
-  toolbar: {
-    flexDirection: "row",
-    justifyContent: "flex-end",
-    marginBottom: 16,
   },
   emptyWrap: {
     flex: 1,

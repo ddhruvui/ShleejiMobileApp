@@ -186,13 +186,11 @@ export default function DreamScreen() {
     <View style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.title}>Dream Board</Text>
+        <AddButton label="Add photo" onPress={pickImage} />
       </View>
 
       {photos.length === 0 ? (
         <View style={styles.emptyWrap}>
-          <View style={styles.toolbar}>
-            <AddButton label="Add Photo" onPress={pickImage} />
-          </View>
           <View style={styles.emptyContainer}>
             <Ionicons name="images-outline" size={80} color="#ccc" />
             <Text style={styles.emptyText}>No dreams yet</Text>
@@ -206,9 +204,6 @@ export default function DreamScreen() {
           contentContainerStyle={styles.photosGrid}
           showsVerticalScrollIndicator={false}
         >
-          <View style={styles.toolbar}>
-            <AddButton label="Add Photo" onPress={pickImage} />
-          </View>
           <View style={styles.masonryContainer}>
             <View style={styles.masonryColumn}>
               {leftColumn.map(renderPhoto)}
@@ -334,13 +329,6 @@ const styles = StyleSheet.create({
     fontSize: 32,
     fontWeight: "800",
     color: "#fff",
-  },
-  toolbar: {
-    flexDirection: "row",
-    justifyContent: "flex-end",
-    marginBottom: 16,
-    paddingTop: 8,
-    paddingHorizontal: 8,
   },
   emptyWrap: {
     flex: 1,

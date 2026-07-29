@@ -1,4 +1,9 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, {
+  useState,
+  useEffect,
+  useCallback,
+  useImperativeHandle,
+} from "react";
 import {
   StyleSheet,
   View,
@@ -10,13 +15,12 @@ import { Ionicons } from "@expo/vector-icons";
 import * as eventsApi from "../api/events";
 import * as headersApi from "../api/headers";
 import * as tasksApi from "../api/tasks";
-import AddButton from "./AddButton";
 import EventModal from "./EventModal";
 import ScheduleEventModal from "./ScheduleEventModal";
 import ConfirmModal from "./ConfirmModal";
 import { formatDateKey } from "../utils/ecd";
 
-export default function EventsSection({ onTasksAdded }) {
+export default function EventsSection({ onTasksAdded, addRef }) {
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -26,6 +30,12 @@ export default function EventsSection({ onTasksAdded }) {
   const [eventModalState, setEventModalState] = useState(null);
   const [scheduleState, setScheduleState] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
+
+  // This panel has no toolbar of its own: TodoScreen's title-bar "+" opens the
+  // add-event modal through this handle while the Events view is showing.
+  useImperativeHandle(addRef, () => ({
+    openAdd: () => setEventModalState({ mode: "add" }),
+  }));
 
   const loadEvents = useCallback(async () => {
     try {
@@ -85,7 +95,8 @@ export default function EventsSection({ onTasksAdded }) {
       const existing = (await headersApi.getAll()).find(
         (h) => h.name.trim().toLowerCase() === eventKey,
       );
-      const header = existing || (await headersApi.create({ name: event.name }));
+      const header =
+        existing || (await headersApi.create({ name: event.name }));
       // Create sequentially so tasks keep the event's order
       for (const taskName of draft.tasks) {
         await tasksApi.create({
@@ -135,13 +146,6 @@ export default function EventsSection({ onTasksAdded }) {
           </TouchableOpacity>
         </View>
       )}
-
-      <View style={styles.toolbar}>
-        <AddButton
-          label="Add Event"
-          onPress={() => setEventModalState({ mode: "add" })}
-        />
-      </View>
 
       {events.map((event) => (
         <View key={event._id} style={styles.section}>
@@ -207,7 +211,9 @@ export default function EventsSection({ onTasksAdded }) {
       {/* Modals */}
       <EventModal
         visible={!!eventModalState}
-        event={eventModalState?.mode === "edit" ? eventModalState.event : undefined}
+        event={
+          eventModalState?.mode === "edit" ? eventModalState.event : undefined
+        }
         onConfirm={handleSaveEvent}
         onCancel={() => setEventModalState(null)}
       />
@@ -273,11 +279,6 @@ const styles = StyleSheet.create({
     color: "#1a7f37",
     flex: 1,
     marginRight: 8,
-  },
-  toolbar: {
-    flexDirection: "row",
-    justifyContent: "flex-end",
-    marginBottom: 16,
   },
   section: {
     marginBottom: 24,

@@ -1,4 +1,9 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, {
+  useState,
+  useEffect,
+  useCallback,
+  useImperativeHandle,
+} from "react";
 import {
   StyleSheet,
   View,
@@ -9,7 +14,6 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import * as lifeEventsApi from "../api/lifeevents";
 import * as tasksApi from "../api/tasks";
-import AddButton from "./AddButton";
 import LifeEventModal from "./LifeEventModal";
 import ConfirmModal from "./ConfirmModal";
 
@@ -37,7 +41,7 @@ function formatLifeEventDate(date) {
   return `↻ ${day} ${SHORT_MONTHS[month - 1]}`;
 }
 
-export default function LifeEventsSection({ onTasksChanged }) {
+export default function LifeEventsSection({ onTasksChanged, addRef }) {
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -45,6 +49,12 @@ export default function LifeEventsSection({ onTasksChanged }) {
   // Modal states
   const [modalState, setModalState] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
+
+  // This panel has no toolbar of its own: TodoScreen's title-bar "+" opens the
+  // add-life-event modal through this handle while the Life Events view shows.
+  useImperativeHandle(addRef, () => ({
+    openAdd: () => setModalState({ mode: "add" }),
+  }));
 
   const loadEvents = useCallback(async () => {
     try {
@@ -153,13 +163,6 @@ export default function LifeEventsSection({ onTasksChanged }) {
         </View>
       )}
 
-      <View style={styles.toolbar}>
-        <AddButton
-          label="Add Life Event"
-          onPress={() => setModalState({ mode: "add" })}
-        />
-      </View>
-
       {events.length > 0 && (
         <View style={styles.list}>
           {events.map((event, idx) => (
@@ -229,7 +232,9 @@ export default function LifeEventsSection({ onTasksChanged }) {
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={styles.actionBtn}
-                  onPress={() => setModalState({ mode: "edit", lifeEvent: event })}
+                  onPress={() =>
+                    setModalState({ mode: "edit", lifeEvent: event })
+                  }
                 >
                   <Ionicons name="pencil" size={16} color="#656d76" />
                 </TouchableOpacity>
@@ -298,11 +303,6 @@ const styles = StyleSheet.create({
     color: "#e74c3c",
     flex: 1,
     marginRight: 8,
-  },
-  toolbar: {
-    flexDirection: "row",
-    justifyContent: "flex-end",
-    marginBottom: 16,
   },
   list: {
     marginBottom: 24,

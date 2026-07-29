@@ -1,4 +1,9 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, {
+  useState,
+  useEffect,
+  useCallback,
+  useImperativeHandle,
+} from "react";
 import {
   StyleSheet,
   View,
@@ -10,7 +15,6 @@ import { Ionicons } from "@expo/vector-icons";
 import * as goalsApi from "../api/goals";
 import * as headersApi from "../api/headers";
 import * as tasksApi from "../api/tasks";
-import AddButton from "./AddButton";
 import GoalModal from "./GoalModal";
 import AddStepModal from "./AddStepModal";
 import ConfirmModal from "./ConfirmModal";
@@ -35,7 +39,7 @@ function sortSteps(steps) {
   ];
 }
 
-export default function GoalsSection({ onTasksChanged }) {
+export default function GoalsSection({ onTasksChanged, addRef }) {
   const [goals, setGoals] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -49,6 +53,12 @@ export default function GoalsSection({ onTasksChanged }) {
   const [addStepGoal, setAddStepGoal] = useState(null);
   const [addingStep, setAddingStep] = useState(false);
   const [deleteStepTarget, setDeleteStepTarget] = useState(null);
+
+  // This panel has no toolbar of its own: TodoScreen's title-bar "+" opens the
+  // add-goal modal through this handle while the Goals view is showing.
+  useImperativeHandle(addRef, () => ({
+    openAdd: () => setAddGoalOpen(true),
+  }));
 
   const loadGoals = useCallback(async () => {
     try {
@@ -302,10 +312,6 @@ export default function GoalsSection({ onTasksChanged }) {
         </View>
       )}
 
-      <View style={styles.toolbar}>
-        <AddButton label="Add Goal" onPress={() => setAddGoalOpen(true)} />
-      </View>
-
       {goals.map((goal, idx) => {
         // Anything non-pending counts (covers legacy statuses from old data)
         const underProgressCount = goal.steps.filter(
@@ -431,10 +437,7 @@ export default function GoalsSection({ onTasksChanged }) {
                         <Ionicons name="arrow-up" size={15} color="#656d76" />
                       </TouchableOpacity>
                       <TouchableOpacity
-                        style={[
-                          styles.iconBtn,
-                          !canMoveDown && styles.busyBtn,
-                        ]}
+                        style={[styles.iconBtn, !canMoveDown && styles.busyBtn]}
                         onPress={() => handleMoveStep(goal, i, 1)}
                         disabled={busy || !canMoveDown}
                       >
@@ -465,10 +468,10 @@ export default function GoalsSection({ onTasksChanged }) {
 
       {goals.length === 0 && (
         <Text style={styles.emptyText}>
-          No goals yet — add one! A goal (e.g. "Improve Health") lists the
-          small habits that get you there, built one step at a time: start a
-          step and it's under progress as a daily habit — for life — then
-          start the next when it sticks. Pause anytime to shelve one.
+          No goals yet — add one! A goal (e.g. "Improve Health") lists the small
+          habits that get you there, built one step at a time: start a step and
+          it's under progress as a daily habit — for life — then start the next
+          when it sticks. Pause anytime to shelve one.
         </Text>
       )}
 
@@ -556,11 +559,6 @@ const styles = StyleSheet.create({
     color: "#1a7f37",
     flex: 1,
     marginRight: 8,
-  },
-  toolbar: {
-    flexDirection: "row",
-    justifyContent: "flex-end",
-    marginBottom: 16,
   },
   section: {
     marginBottom: 24,

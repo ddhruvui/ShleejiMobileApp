@@ -157,12 +157,6 @@ export default function CallsScreen() {
     if (calls.length === 0 && !actionError) {
       return (
         <View style={styles.emptyWrap}>
-          <View style={styles.toolbar}>
-            <AddButton
-              label="Add Call"
-              onPress={() => setModalState({ mode: "add" })}
-            />
-          </View>
           <View style={styles.centered}>
             <Ionicons name="call-outline" size={80} color="#ccc" />
             <Text style={styles.emptyText}>No calls yet</Text>
@@ -182,13 +176,6 @@ export default function CallsScreen() {
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
       >
-        <View style={styles.toolbar}>
-          <AddButton
-            label="Add Call"
-            onPress={() => setModalState({ mode: "add" })}
-          />
-        </View>
-
         {actionError && (
           <View style={styles.actionErrorBar}>
             <Text style={styles.actionErrorText}>
@@ -223,6 +210,10 @@ export default function CallsScreen() {
     <View style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.title}>Calls</Text>
+        <AddButton
+          label="Add call"
+          onPress={() => setModalState({ mode: "add" })}
+        />
       </View>
 
       {renderBody()}
@@ -267,11 +258,6 @@ const styles = StyleSheet.create({
     fontSize: 32,
     fontWeight: "800",
     color: "#fff",
-  },
-  toolbar: {
-    flexDirection: "row",
-    justifyContent: "flex-end",
-    marginBottom: 16,
   },
   emptyWrap: {
     flex: 1,

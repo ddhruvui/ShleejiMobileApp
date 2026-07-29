@@ -147,7 +147,7 @@ export default function CounterScreen() {
         >
           <Text style={styles.resetBtnText}>Reset</Text>
         </TouchableOpacity>
-        <AddButton label="Add Count" onPress={handleAddPress} />
+        <AddButton label="Add count" onPress={handleAddPress} />
       </View>
 
       {/* ─── Trackpad: tap anywhere to increment ─── */}

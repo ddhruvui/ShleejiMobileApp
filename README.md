@@ -14,6 +14,14 @@ Tapping a tab switches to it; re-tapping the already-active tab returns to
 **Todo** (mirrors the web app, where re-clicking an active view button toggles
 back to the todo view).
 
+Every tab's add action is a single **"+" button in the blue title bar**, beside
+the screen title — there are no labelled "+ Add X" buttons. On **Todo** that one
+button follows the view that is showing: it adds a header in the todo and By
+Date lists, a project in Projects, a goal in Goals, an event in Events, a life
+event in Life Events, and is hidden in Insights (nothing to add there).
+**Counter** is the exception — its "+" stays in the content toolbar next to
+Reset.
+
 Talks to the deployed TaskAtHandBE API (`https://task-at-hand-be.vercel.app`,
 configured in `api/client.js`).
 
@@ -151,6 +159,7 @@ Shleeji/
 │   └── CounterScreen.js
 ├── components/
 │   ├── TaskCard.js  AddTaskModal.js  EditTaskModal.js
+│   ├── AddButton.js           # Shared icon-only "+" (sits in the title bar)
 │   ├── HeaderModal.js  ConfirmModal.js  EcdPicker.js
 │   ├── AffirmationModal.js    # Add/edit (+ delete) affirmation modal
 │   ├── CallModal.js           # Add/edit call modal (name + biweekly/monthly)
