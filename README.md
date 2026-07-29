@@ -10,6 +10,10 @@ Expo / React Native mobile app for TaskAtHand, with five tabs:
 | **Calls** | People to ring — Biweekly and Monthly sections; check off who you've called (the backend cron unchecks biweekly people on the 15th and everyone on the last day of the month); add, edit, delete (synced with the web app via the backend) |
 | **Counter** | Mada counter — taps accumulate; every 108 clicks converts to 1 mada        |
 
+Tapping a tab switches to it; re-tapping the already-active tab returns to
+**Todo** (mirrors the web app, where re-clicking an active view button toggles
+back to the todo view).
+
 Talks to the deployed TaskAtHandBE API (`https://task-at-hand-be.vercel.app`,
 configured in `api/client.js`).
 
@@ -27,7 +31,11 @@ configured in `api/client.js`).
   then past dates, then future dates, with thick dividers between the
   present, past and future sections), **Insights** (see below),
   **Events** (see below), **Life Events** (see below), **Goals** (see below),
-  **Projects** (see below)
+  **Projects** (see below). The panel toggles (everything except By Date)
+  are mutually exclusive: tapping one opens that view and deactivates
+  whichever was open, and tapping the active one returns to the todo list.
+  By Date is a todo-list filter, stays active while a panel is open, and
+  applies again when the panel closes.
 - **Events** — reusable task bundles (e.g. "Burger Night" with its shopping
   list). "Add to todo" opens a date picker plus a checklist of the event's
   tasks (all selected by default, tap to unmark); confirming adds the selected

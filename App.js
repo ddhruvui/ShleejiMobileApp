@@ -44,6 +44,16 @@ export default function App() {
             fontWeight: "600",
           },
         }}
+        screenListeners={({ navigation, route }) => ({
+          // Re-tapping the already-active tab returns to Todo — mirrors the
+          // web FE, where clicking an active view button toggles back to todo.
+          tabPress: (e) => {
+            if (route.name !== "Todo" && navigation.isFocused()) {
+              e.preventDefault();
+              navigation.navigate("Todo");
+            }
+          },
+        })}
       >
         <Tab.Screen
           name="Dream"

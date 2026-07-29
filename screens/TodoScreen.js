@@ -54,6 +54,23 @@ export default function TodoScreen() {
   const [goalsMode, setGoalsMode] = useState(false);
   const [projectsMode, setProjectsMode] = useState(false);
 
+  // Panel views are mutually exclusive — activating one deactivates the rest,
+  // so the tapped toggle is always the view shown (byDateMode is a todo-list
+  // filter, not a panel, and stays independent). Mirrors web FE App.tsx.
+  const panelModeSetters = [
+    setInsightsMode,
+    setEventsMode,
+    setLifeEventsMode,
+    setGoalsMode,
+    setProjectsMode,
+  ];
+  const togglePanelMode = (setter) => {
+    panelModeSetters.forEach((s) => {
+      if (s !== setter) s(false);
+    });
+    setter((prev) => !prev);
+  };
+
   // Modal states
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [addTaskHeaderId, setAddTaskHeaderId] = useState(null);
@@ -448,7 +465,7 @@ export default function TodoScreen() {
             styles.toggleBtn,
             insightsMode && styles.toggleBtnActive,
           ]}
-          onPress={() => setInsightsMode((prev) => !prev)}
+          onPress={() => togglePanelMode(setInsightsMode)}
           activeOpacity={0.7}
         >
           <Ionicons
@@ -470,7 +487,7 @@ export default function TodoScreen() {
             styles.toggleBtn,
             eventsMode && styles.toggleBtnActive,
           ]}
-          onPress={() => setEventsMode((prev) => !prev)}
+          onPress={() => togglePanelMode(setEventsMode)}
           activeOpacity={0.7}
         >
           <Ionicons
@@ -492,7 +509,7 @@ export default function TodoScreen() {
             styles.toggleBtn,
             lifeEventsMode && styles.toggleBtnActive,
           ]}
-          onPress={() => setLifeEventsMode((prev) => !prev)}
+          onPress={() => togglePanelMode(setLifeEventsMode)}
           activeOpacity={0.7}
         >
           <Ionicons
@@ -514,7 +531,7 @@ export default function TodoScreen() {
             styles.toggleBtn,
             goalsMode && styles.toggleBtnActive,
           ]}
-          onPress={() => setGoalsMode((prev) => !prev)}
+          onPress={() => togglePanelMode(setGoalsMode)}
           activeOpacity={0.7}
         >
           <Ionicons
@@ -536,7 +553,7 @@ export default function TodoScreen() {
             styles.toggleBtn,
             projectsMode && styles.toggleBtnActive,
           ]}
-          onPress={() => setProjectsMode((prev) => !prev)}
+          onPress={() => togglePanelMode(setProjectsMode)}
           activeOpacity={0.7}
         >
           <Ionicons
