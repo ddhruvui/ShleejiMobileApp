@@ -15,6 +15,15 @@ import ProjectModal from "./ProjectModal";
 import ProjectTaskModal from "./ProjectTaskModal";
 import ConfirmModal from "./ConfirmModal";
 
+/**
+ * Whether two tasks sit in the same movable group. The server sorts a
+ * project's tasks into dated-undone, undated-undone and done, so a swap
+ * across those lines would be reverted on the next write.
+ */
+function sameMoveGroup(a, b) {
+  return a.done === b.done && (a.done || !!a.date === !!b.date);
+}
+
 /** `MM/DD` like the todo's date display; adds `/YY` when not the current year. */
 function formatTaskDate(date) {
   const [y, m, d] = date.split("-").map(Number);
@@ -453,10 +462,12 @@ export default function ProjectsSection({ onTasksChanged }) {
                 const prev = project.tasks[taskIdx - 1];
                 const next = project.tasks[taskIdx + 1];
                 // Moves never cross the done/undone barrier (same as the todo)
-                const canMoveUp = taskIdx > 0 && prev.done === task.done;
+                // nor the dated/undated one the server enforces among undone
+                // tasks, so the panel can't offer a swap the server undoes.
+                const canMoveUp = taskIdx > 0 && sameMoveGroup(prev, task);
                 const canMoveDown =
                   taskIdx < project.tasks.length - 1 &&
-                  next.done === task.done;
+                  sameMoveGroup(next, task);
                 const isLast = taskIdx === project.tasks.length - 1;
                 return (
                   <View

@@ -88,8 +88,9 @@ configured in `api/client.js`).
   "deploy to cpu"). Projects are ordered with move up/down arrows
   (header-style priority) and each project's tasks are added, edited,
   reordered, completed and deleted with the same interactions as the todo —
-  done tasks always drop to the bottom, and moves never cross the
-  done/undone barrier. Each task can carry free-text **notes** (shown under
+  done tasks always drop to the bottom, **dated tasks always sit above the
+  undated ones** (a step with a date is already committed to the todo, so it
+  outranks the backlog), and moves never cross either barrier. Each task can carry free-text **notes** (shown under
   the task name), just like a todo task. Giving a task a **date** mirrors it
   into the todo as a one-time date task under the project's own header
   (created on demand and kept in the projects' order by the backend), and
