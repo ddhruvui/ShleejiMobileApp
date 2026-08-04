@@ -9,7 +9,6 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import AddButton from "../components/AddButton";
 
 const STORAGE_KEY = "clickCount";
 const MADA_STORAGE_KEY = "madaCount";
@@ -136,18 +135,22 @@ export default function CounterScreen() {
           </View>
         </View>
 
-      </View>
-
-      {/* ─── Reset / Add toolbar ─── */}
-      <View style={styles.toolbar}>
-        <TouchableOpacity
-          style={styles.resetBtn}
-          onPress={handleResetPress}
-          activeOpacity={0.7}
-        >
-          <Text style={styles.resetBtnText}>Reset</Text>
-        </TouchableOpacity>
-        <AddButton label="Add count" onPress={handleAddPress} />
+        <View style={styles.headerButtons}>
+          <TouchableOpacity
+            style={styles.resetBtn}
+            onPress={handleResetPress}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.resetBtnText}>Reset</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.addBtn}
+            onPress={handleAddPress}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.addBtnText}>+ Add</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* ─── Trackpad: tap anywhere to increment ─── */}
@@ -286,26 +289,34 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     color: "#fff",
   },
-  /* Reset / Add toolbar (matches the shared AddButton family) */
-  toolbar: {
-    flexDirection: "row",
-    justifyContent: "flex-end",
-    gap: 10,
-    paddingHorizontal: 16,
-    paddingTop: 16,
-  },
   resetBtn: {
     backgroundColor: "#fff",
-    paddingVertical: 10,
-    paddingHorizontal: 20,
+    paddingVertical: 12,
+    paddingHorizontal: 24,
     borderRadius: 8,
-    borderWidth: 1,
-    borderColor: "#d0d7de",
   },
   resetBtnText: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#e74c3c",
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#1e88e5",
+  },
+
+  /* Header buttons */
+  headerButtons: {
+    gap: 10,
+    alignItems: "stretch",
+  },
+  addBtn: {
+    backgroundColor: "#fff",
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 8,
+    alignItems: "center",
+  },
+  addBtnText: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#1e88e5",
   },
   addInput: {
     width: "100%",

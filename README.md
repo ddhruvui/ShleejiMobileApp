@@ -19,8 +19,8 @@ the screen title — there are no labelled "+ Add X" buttons. On **Todo** that o
 button follows the view that is showing: it adds a header in the todo and By
 Date lists, a project in Projects, a goal in Goals, an event in Events, a life
 event in Life Events, and is hidden in Insights (nothing to add there).
-**Counter** is the exception — its "+" stays in the content toolbar next to
-Reset.
+**Counter** is the exception — it keeps its original pair of labelled white
+buttons, **Reset** and **+ Add**, stacked at the right of its blue header.
 
 Talks to the deployed TaskAtHandBE API (`https://task-at-hand-be.vercel.app`,
 configured in `api/client.js`).
