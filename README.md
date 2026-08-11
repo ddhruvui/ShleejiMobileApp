@@ -123,12 +123,15 @@ configured in `api/client.js`).
 - **Insights** — habit stats and AI coaching from the backend archive:
   - Habit cards: completion %, current/best streak, hit/miss dot row of recent
     scheduled days (habits = tasks scheduled by day of week)
-  - Task stats: one-time completions, average slip past the planned date,
-    most-rescheduled tasks
+  - Task stats: one-time completions, how many landed on or before their
+    planned date (finishing early or on the day counts as on time), the average
+    slip past the planned date when some ran late, and the most-rescheduled
+    tasks
   - Coach: the latest AI report (summary, on track / slipping, task insights,
     procrastination flags, calls to make, suggestions) with a "Generate now"
     button — "Calls to make" appears only for reports generated after the
-    Calls feature
+    Calls feature. The backend generates a report on its own **once a week, on
+    Friday**; "Generate now" is not limited by that
 - **Daily reminders** — local notifications at **8:30 AM** and **4:00 PM**
   (device local time) listing the day's pending tasks and an overdue count.
   Slots with nothing pending are skipped.

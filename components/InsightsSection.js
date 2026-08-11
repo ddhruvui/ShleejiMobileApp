@@ -136,16 +136,31 @@ export default function InsightsSection() {
                   {stats.oneTimeTasks.completedCount}
                 </Text>{" "}
                 one-time tasks completed in the last {stats.periodDays} days
-                {stats.oneTimeTasks.avgSlippageDays !== null && (
+                {/* On or before the planned date is a win — shown first, and
+                    the slip line only appears when something was actually
+                    late. Older backends don't send the counts, hence the
+                    guard. Mirrors the web FE's InsightsPanel. */}
+                {stats.oneTimeTasks.onTimeCount !== undefined && (
                   <>
                     {" "}
-                    · average slip of{" "}
+                    ·{" "}
                     <Text style={styles.bold}>
-                      {stats.oneTimeTasks.avgSlippageDays} days
+                      {stats.oneTimeTasks.onTimeCount}
                     </Text>{" "}
-                    past the planned date
+                    on or before the planned date
                   </>
                 )}
+                {stats.oneTimeTasks.avgSlippageDays !== null &&
+                  stats.oneTimeTasks.avgSlippageDays > 0 && (
+                    <>
+                      {" "}
+                      · average slip of{" "}
+                      <Text style={styles.bold}>
+                        {stats.oneTimeTasks.avgSlippageDays} days
+                      </Text>{" "}
+                      past the planned date
+                    </>
+                  )}
               </Text>
               {stats.reschedules.length > 0 && (
                 <>
@@ -241,8 +256,8 @@ export default function InsightsSection() {
             </>
           ) : (
             <Text style={styles.emptyText}>
-              No AI report yet — one is generated automatically each night, or
-              tap "Generate now".
+              No AI report yet — one is generated automatically every Friday,
+              or tap "Generate now".
             </Text>
           )}
         </View>
