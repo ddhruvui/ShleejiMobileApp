@@ -15,16 +15,18 @@ import { Ionicons } from "@expo/vector-icons";
 import * as goalsApi from "../api/goals";
 import * as headersApi from "../api/headers";
 import * as tasksApi from "../api/tasks";
+import * as insightsApi from "../api/insights";
 import GoalModal from "./GoalModal";
 import AddStepModal from "./AddStepModal";
+import StepDaysModal from "./StepDaysModal";
 import ConfirmModal from "./ConfirmModal";
-import { ONE_STEP_HEADER } from "../utils/goalSync";
-
-/** Started steps become daily habits so Insights can track them. */
-const DAILY_ECD = {
-  type: "day_of_week",
-  value: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
-};
+import {
+  ONE_STEP_HEADER,
+  daysLabel,
+  daysToEcd,
+  isOneStepHeaderName,
+  stepDays,
+} from "../utils/goalSync";
 
 /**
  * Under-progress steps sort above the pending backlog (stable within each
@@ -41,6 +43,8 @@ function sortSteps(steps) {
 
 export default function GoalsSection({ onTasksChanged, addRef }) {
   const [goals, setGoals] = useState([]);
+  /** Current/best streak of a started step, keyed by lower-cased step name. */
+  const [streaks, setStreaks] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [notice, setNotice] = useState(null);
@@ -53,6 +57,9 @@ export default function GoalsSection({ onTasksChanged, addRef }) {
   const [addStepGoal, setAddStepGoal] = useState(null);
   const [addingStep, setAddingStep] = useState(false);
   const [deleteStepTarget, setDeleteStepTarget] = useState(null);
+  // Day picker, opened either to start a pending step or to reschedule a
+  // started one. `mode` decides which of the two the confirm handler runs.
+  const [daysTarget, setDaysTarget] = useState(null);
 
   // This panel has no toolbar of its own: TodoScreen's title-bar "+" opens the
   // add-goal modal through this handle while the Goals view is showing.
@@ -72,9 +79,38 @@ export default function GoalsSection({ onTasksChanged, addRef }) {
     }
   }, []);
 
+  /**
+   * Habit streaks for the started steps, from the same archive stats the
+   * Insights view reads. The archive only records a result on days the task's
+   * ECD covers, so a streak here counts scheduled days: a Mon/Wed/Fri habit
+   * survives an untouched Tuesday.
+   *
+   * Habits are matched by name under the "One Step At A Time" header — the
+   * same case-insensitive link the rest of the goal↔todo sync uses. Failure is
+   * silent: stats are decoration on this view, not the reason it exists.
+   */
+  const loadStreaks = useCallback(async () => {
+    try {
+      const stats = await insightsApi.getStats();
+      const map = {};
+      for (const habit of stats.habits) {
+        if (!habit.headerName || !isOneStepHeaderName(habit.headerName))
+          continue;
+        map[habit.taskName.trim().toLowerCase()] = {
+          current: habit.currentStreak,
+          longest: habit.longestStreak,
+        };
+      }
+      setStreaks(map);
+    } catch {
+      setStreaks(null);
+    }
+  }, []);
+
   useEffect(() => {
     loadGoals();
-  }, [loadGoals]);
+    loadStreaks();
+  }, [loadGoals, loadStreaks]);
 
   /* ── Goal CRUD ── */
 
@@ -163,29 +199,47 @@ export default function GoalsSection({ onTasksChanged, addRef }) {
 
   /* ── Step transitions ──
    * A step is under progress exactly while its daily task lives under the
-   * "One Step At A Time" header. Start creates the task (header reused when
-   * one exists, created otherwise — same find-or-create pattern as event
-   * scheduling) and the habit is kept for life; Pause removes the task and
-   * shelves the step. Deleting the task from the todo pauses the step too
-   * (see utils/goalSync). */
+   * "One Step At A Time" header. Start creates the task on the weekdays the
+   * user picked (header reused when one exists, created otherwise — same
+   * find-or-create pattern as event scheduling) and the habit is kept for
+   * life; Pause removes the task and shelves the step. Deleting the task from
+   * the todo pauses the step too (see utils/goalSync). */
 
   const findOneStepHeader = async () => {
     const all = await headersApi.getAll();
-    return all.find(
-      (h) => h.name.trim().toLowerCase() === ONE_STEP_HEADER.toLowerCase(),
+    return all.find((h) => isOneStepHeaderName(h.name));
+  };
+
+  /** The started step's task under "One Step At A Time", matched by name. */
+  const findStepTask = async (stepName) => {
+    const header = await findOneStepHeader();
+    if (!header) return null;
+    const tasks = await tasksApi.getAll(header._id);
+    return (
+      tasks.find(
+        (t) => t.name.trim().toLowerCase() === stepName.trim().toLowerCase(),
+      ) || null
     );
   };
 
-  const updateStepStatus = async (goal, stepIndex, status) => {
+  const patchStep = async (goal, stepIndex, patch) => {
     const steps = sortSteps(goal.steps).map((s, i) =>
-      i === stepIndex ? { ...s, status } : s,
+      i === stepIndex ? { ...s, ...patch } : s,
     );
     // Re-sort so the step joins its new group (a started step rises to the
     // under-progress block, a paused one drops back to the backlog)
     await goalsApi.update(goal._id, { steps: sortSteps(steps) });
   };
 
-  const handleStartStep = async (goal, stepIndex) => {
+  const updateStepStatus = (goal, stepIndex, status) =>
+    patchStep(goal, stepIndex, { status });
+
+  /**
+   * Begin a step on the chosen weekdays. The task's ECD is set from `days`
+   * even when the task already exists, so a re-start can't leave the todo on
+   * an older schedule than the goal claims.
+   */
+  const handleStartStep = async (goal, stepIndex, days) => {
     const step = sortSteps(goal.steps)[stepIndex];
     setBusyStep(`${goal._id}:${stepIndex}`);
     try {
@@ -193,22 +247,51 @@ export default function GoalsSection({ onTasksChanged, addRef }) {
         (await findOneStepHeader()) ||
         (await headersApi.create({ name: ONE_STEP_HEADER }));
       const existing = await tasksApi.getAll(header._id);
-      const alreadyThere = existing.some(
+      const alreadyThere = existing.find(
         (t) => t.name.trim().toLowerCase() === step.name.trim().toLowerCase(),
       );
-      if (!alreadyThere) {
+      if (alreadyThere) {
+        await tasksApi.update(alreadyThere._id, { ecd: daysToEcd(days) });
+      } else {
         await tasksApi.create({
           name: step.name,
           headerId: header._id,
           notes: `Step towards "${goal.name}"`,
-          ecd: DAILY_ECD,
+          ecd: daysToEcd(days),
         });
       }
-      await updateStepStatus(goal, stepIndex, "under_progress");
+      await patchStep(goal, stepIndex, { status: "under_progress", days });
       await loadGoals();
+      setDaysTarget(null);
       setError(null);
       setNotice(
-        `Started "${step.name}" — under progress as a daily habit in "${ONE_STEP_HEADER}".`,
+        `Started "${step.name}" — under progress every ${days.join(", ")} in "${ONE_STEP_HEADER}".`,
+      );
+      onTasksChanged();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusyStep(null);
+    }
+  };
+
+  /**
+   * Reschedule a step already under progress: the goal keeps the new days and
+   * its task's ECD is rewritten to match, so the streak starts counting the
+   * new set from the next nightly archive run.
+   */
+  const handleChangeDays = async (goal, stepIndex, days) => {
+    const step = sortSteps(goal.steps)[stepIndex];
+    setBusyStep(`${goal._id}:${stepIndex}`);
+    try {
+      const task = await findStepTask(step.name);
+      if (task) await tasksApi.update(task._id, { ecd: daysToEcd(days) });
+      await patchStep(goal, stepIndex, { days });
+      await loadGoals();
+      setDaysTarget(null);
+      setError(null);
+      setNotice(
+        `"${step.name}" is now due every ${days.join(", ")} — its streak counts those days.`,
       );
       onTasksChanged();
     } catch (err) {
@@ -223,14 +306,8 @@ export default function GoalsSection({ onTasksChanged, addRef }) {
     const step = sortSteps(goal.steps)[stepIndex];
     setBusyStep(`${goal._id}:${stepIndex}`);
     try {
-      const header = await findOneStepHeader();
-      if (header) {
-        const tasks = await tasksApi.getAll(header._id);
-        const match = tasks.find(
-          (t) => t.name.trim().toLowerCase() === step.name.trim().toLowerCase(),
-        );
-        if (match) await tasksApi.remove(match._id);
-      }
+      const match = await findStepTask(step.name);
+      if (match) await tasksApi.remove(match._id);
       await updateStepStatus(goal, stepIndex, "pending");
       await loadGoals();
       setError(null);
@@ -258,15 +335,8 @@ export default function GoalsSection({ onTasksChanged, addRef }) {
     setBusyStep(`${goal._id}:${index}`);
     try {
       if (step.status !== "pending") {
-        const header = await findOneStepHeader();
-        if (header) {
-          const tasks = await tasksApi.getAll(header._id);
-          const match = tasks.find(
-            (t) =>
-              t.name.trim().toLowerCase() === step.name.trim().toLowerCase(),
-          );
-          if (match) await tasksApi.remove(match._id);
-        }
+        const match = await findStepTask(step.name);
+        if (match) await tasksApi.remove(match._id);
       }
       await goalsApi.update(goal._id, {
         steps: steps.filter((_, i) => i !== index),
@@ -373,6 +443,9 @@ export default function GoalsSection({ onTasksChanged, addRef }) {
                 const busy = busyStep === `${goal._id}:${i}`;
                 const isLast = i === steps.length - 1;
                 const started = step.status !== "pending";
+                const days = stepDays(step);
+                const streak =
+                  streaks && streaks[step.name.trim().toLowerCase()];
                 // Moves stay inside the step's own group — mirrors the todo's
                 // done/undone barrier
                 const canMoveUp =
@@ -396,7 +469,7 @@ export default function GoalsSection({ onTasksChanged, addRef }) {
                       onPress={() =>
                         started
                           ? handlePauseStep(goal, i)
-                          : handleStartStep(goal, i)
+                          : setDaysTarget({ goal, index: i, mode: "start" })
                       }
                       disabled={busy}
                     >
@@ -409,26 +482,59 @@ export default function GoalsSection({ onTasksChanged, addRef }) {
                         {step.name}
                       </Text>
                       {/* Same slot the todo uses for the ECD badge. A started
-                          step is a 7-day recurring task there, so it gets the
-                          recurring styling too. */}
-                      <View
-                        style={[
-                          styles.stepBadge,
-                          started && styles.stepBadgeStarted,
-                        ]}
-                      >
-                        <Text
+                          step is a recurring task there, so it gets the
+                          recurring styling and the same day list its task
+                          card shows. */}
+                      <View style={styles.stepBadgeRow}>
+                        <View
                           style={[
-                            styles.stepBadgeText,
-                            started && styles.stepBadgeTextStarted,
+                            styles.stepBadge,
+                            started && styles.stepBadgeStarted,
                           ]}
                         >
-                          {started ? "↻ Daily" : "Not started"}
-                        </Text>
+                          <Text
+                            style={[
+                              styles.stepBadgeText,
+                              started && styles.stepBadgeTextStarted,
+                            ]}
+                          >
+                            {started ? `↻ ${daysLabel(days)}` : "Not started"}
+                          </Text>
+                        </View>
+                        {/* Streak over the step's own days — a habit set to
+                            Mon/Wed/Fri isn't broken by an untouched Tuesday,
+                            because no result is archived for a day the task
+                            wasn't due. */}
+                        {started && streak && (
+                          <View style={styles.streakBadge}>
+                            <Text style={styles.streakText}>
+                              🔥 {streak.current}
+                            </Text>
+                          </View>
+                        )}
                       </View>
                     </View>
                     {/* Same action cluster the todo puts on a task */}
                     <View style={styles.stepActions}>
+                      {/* Only a started step has a schedule to change; a
+                          pending one is asked for its days when it starts.
+                          The todo can't do it — EditTaskModal locks the ECD
+                          of goal-managed tasks, so this is the only way in. */}
+                      {started && (
+                        <TouchableOpacity
+                          style={styles.iconBtn}
+                          onPress={() =>
+                            setDaysTarget({ goal, index: i, mode: "edit" })
+                          }
+                          disabled={busy}
+                        >
+                          <Ionicons
+                            name="calendar-outline"
+                            size={15}
+                            color="#656d76"
+                          />
+                        </TouchableOpacity>
+                      )}
                       <TouchableOpacity
                         style={[styles.iconBtn, !canMoveUp && styles.busyBtn]}
                         onPress={() => handleMoveStep(goal, i, -1)}
@@ -469,9 +575,10 @@ export default function GoalsSection({ onTasksChanged, addRef }) {
       {goals.length === 0 && (
         <Text style={styles.emptyText}>
           No goals yet — add one! A goal (e.g. "Improve Health") lists the small
-          habits that get you there, built one step at a time: start a step and
-          it's under progress as a daily habit — for life — then start the next
-          when it sticks. Pause anytime to shelve one.
+          habits that get you there, built one step at a time: start a step,
+          pick the weekdays it runs on and it's under progress — for life —
+          then start the next when it sticks. Its streak counts only those
+          days. Pause anytime to shelve one.
         </Text>
       )}
 
@@ -480,6 +587,32 @@ export default function GoalsSection({ onTasksChanged, addRef }) {
         visible={addGoalOpen}
         onConfirm={handleSaveGoal}
         onCancel={() => setAddGoalOpen(false)}
+      />
+
+      <StepDaysModal
+        visible={!!daysTarget}
+        goalName={daysTarget?.goal.name}
+        stepName={
+          daysTarget
+            ? sortSteps(daysTarget.goal.steps)[daysTarget.index].name
+            : ""
+        }
+        initialDays={
+          daysTarget
+            ? stepDays(sortSteps(daysTarget.goal.steps)[daysTarget.index])
+            : undefined
+        }
+        mode={daysTarget?.mode}
+        busy={
+          !!daysTarget &&
+          busyStep === `${daysTarget.goal._id}:${daysTarget.index}`
+        }
+        onConfirm={(days) =>
+          daysTarget?.mode === "start"
+            ? handleStartStep(daysTarget.goal, daysTarget.index, days)
+            : handleChangeDays(daysTarget.goal, daysTarget.index, days)
+        }
+        onCancel={() => setDaysTarget(null)}
       />
 
       <AddStepModal
@@ -651,11 +784,30 @@ const styles = StyleSheet.create({
     fontWeight: "500",
     color: "#1f2328",
   },
+  /* Schedule badge + streak sit together in the todo's ECD slot */
+  stepBadgeRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
   stepBadge: {
     backgroundColor: "#f0f0f0",
     borderRadius: 10,
     paddingHorizontal: 8,
     paddingVertical: 2,
+  },
+  /* Habit streak, counted over the step's own weekdays (see loadStreaks) */
+  streakBadge: {
+    borderWidth: 1,
+    borderColor: "#bc4c00",
+    borderRadius: 10,
+    paddingHorizontal: 7,
+    paddingVertical: 1,
+  },
+  streakText: {
+    fontSize: 11,
+    fontWeight: "600",
+    color: "#bc4c00",
   },
   stepBadgeStarted: {
     backgroundColor: "#e8f0fe",

@@ -55,9 +55,9 @@ export default function EditTaskModal({
   createdAt,
   updatedAt,
   ecd,
-  // Daily habit owned by a goal (under "One Step At A Time"). The goal links
-  // to this task by name, so name and schedule are locked — only notes stay
-  // editable.
+  // Habit owned by a goal (under "One Step At A Time"). The goal links to
+  // this task by name and owns its weekday schedule, so name and ECD are
+  // locked — only notes stay editable.
   goalManaged,
   onConfirm,
   onCancel,
@@ -100,6 +100,13 @@ export default function EditTaskModal({
     yearVal,
   });
   const isPostpone = isPushedLater(ecd, previewEcd);
+
+  // Read-only schedule line for a goal-managed habit. The full week reads as
+  // "Every day"; anything narrower lists the days the goal started it on.
+  const goalSchedule =
+    ecd && ecd.type === "day_of_week" && ecd.value.length < 7
+      ? ecd.value.join(", ")
+      : "Every day";
 
   function handleSave() {
     // Goal-managed tasks save notes only — name and ecd pass through
@@ -178,8 +185,8 @@ export default function EditTaskModal({
 
                 {goalManaged && (
                   <Text style={styles.lockedHint}>
-                    Daily habit managed by its goal — name and schedule are
-                    locked.
+                    Habit managed by its goal — name and schedule are locked.
+                    Change its days in the Goals view.
                   </Text>
                 )}
 
@@ -201,7 +208,7 @@ export default function EditTaskModal({
 
                 {goalManaged ? (
                   <Text style={styles.lockedEcdText}>
-                    ↻ Every day, for life
+                    ↻ {goalSchedule}, for life
                   </Text>
                 ) : (
                   <EcdPicker

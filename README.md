@@ -72,15 +72,23 @@ configured in `api/client.js`).
   want to build them. Steps render as todo task rows and are added the same
   way: a `+` on the goal heading opens an add-step dialog that appends one
   step, just as `+` on a todo header adds a task. A step is either paused
-  (unchecked, "Not started") or **under progress** (checked, "↻ Daily"); the
-  checkbox toggles between them. Checking it creates a daily recurring task
+  (unchecked, "Not started") or **under progress** (checked, "↻ Daily" /
+  "↻ Mon, Wed, Fri"); the checkbox toggles between them. Checking it opens a
+  day picker (whole week by default, with Every day/Weekdays/Weekends presets,
+  at least one day required) and creates a recurring task on those weekdays
   under a todo header named "One Step At A Time" (reused if it already
-  exists), kept for life; unchecking removes that task and returns the step
-  to the backlog. The goal heading's badge (e.g. "1/4 under progress")
-  tracks this. Goals are ordered with move up/down arrows on the heading (a
+  exists), kept for life; unchecking removes that task (the days are kept for
+  the next start) and returns the step to the backlog. An under-progress row
+  also carries a **calendar button** to reschedule the habit later — the only
+  way in, since the todo locks a goal-managed task's schedule — which rewrites
+  the task's ECD to match, and a **streak badge** ("🔥 4") read from
+  `GET /insights/stats`. The nightly archive only records a result on days the
+  habit is due, so the streak counts scheduled days only: an untouched Tuesday
+  can't break a Mon/Wed/Fri habit. The goal heading's badge (e.g. "1/4 under
+  progress") tracks how many steps are running. Goals are ordered with move up/down arrows on the heading (a
   server-side contiguous priority, like headers and projects), and each step
   has its own move up/down and delete — deleting an under-progress step
-  removes its daily task too, so the todo never keeps an orphan habit.
+  removes its task too, so the todo never keeps an orphan habit.
   Under-progress steps always sort above the pending backlog (starting a
   step lifts it into the top group) and the move arrows never cross that
   boundary, mirroring the todo's undone-above-done barrier. The
@@ -170,6 +178,7 @@ Shleeji/
 │   ├── EventsSection.js  EventModal.js  ScheduleEventModal.js   # Events view
 │   ├── LifeEventsSection.js  LifeEventModal.js                   # Life Events view
 │   ├── GoalsSection.js  GoalModal.js  AddStepModal.js            # Goals view
+│   ├── StepDaysModal.js                                         # habit weekday picker
 │   └── ProjectsSection.js  ProjectModal.js  ProjectTaskModal.js # Projects view
 ├── api/
 │   ├── client.js              # fetch wrapper (base URL lives here)
@@ -183,7 +192,7 @@ Shleeji/
 │   └── insights.js            # /insights/stats, /insights/latest, /insights/generate
 └── utils/
     ├── ecd.js                 # ECD due-today/date-key helpers
-    ├── goalSync.js            # goal step ↔ todo sync helpers
+    ├── goalSync.js            # goal step ↔ todo sync + habit-day helpers
     ├── projectSync.js         # project task ↔ todo sync helpers
     ├── lifeEventSync.js       # life event ↔ todo sync helpers
     └── notifications.js       # 8:30 AM / 4:00 PM daily reminders
