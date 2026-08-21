@@ -22,8 +22,10 @@ import EventsSection from "../components/EventsSection";
 import LifeEventsSection from "../components/LifeEventsSection";
 import GoalsSection from "../components/GoalsSection";
 import ProjectsSection from "../components/ProjectsSection";
+import VacationSection from "../components/VacationSection";
 import { getEcdDateKey, formatDateKey, todayDateKey } from "../utils/ecd";
 import { syncDailyReminders } from "../utils/notifications";
+import * as vacationsApi from "../api/vacations";
 import {
   isOneStepHeaderName,
   pauseStepsMatchingTask,
@@ -53,6 +55,15 @@ export default function TodoScreen() {
   const [lifeEventsMode, setLifeEventsMode] = useState(false);
   const [goalsMode, setGoalsMode] = useState(false);
   const [projectsMode, setProjectsMode] = useState(false);
+  const [vacationMode, setVacationMode] = useState(false);
+
+  // Vacation status is screen-level, not panel-level, on purpose: the most
+  // likely real-world failure of this feature is booking time off and
+  // forgetting, then wondering months later why the insights went quiet. The
+  // banner below makes an active vacation visible from every view — and the
+  // ranges also silence the daily reminders while the user is away.
+  const [vacationStatus, setVacationStatus] = useState(null);
+  const [vacations, setVacations] = useState([]);
 
   // Panel views are mutually exclusive — activating one deactivates the rest,
   // so the tapped toggle is always the view shown (byDateMode is a todo-list
@@ -63,6 +74,7 @@ export default function TodoScreen() {
     setLifeEventsMode,
     setGoalsMode,
     setProjectsMode,
+    setVacationMode,
   ];
   const togglePanelMode = (setter) => {
     panelModeSetters.forEach((s) => {
@@ -82,6 +94,7 @@ export default function TodoScreen() {
   const lifeEventsAddRef = useRef(null);
   const goalsAddRef = useRef(null);
   const projectsAddRef = useRef(null);
+  const vacationAddRef = useRef(null);
 
   /* ── Load all headers and their tasks ── */
   const loadAll = useCallback(async () => {
@@ -103,15 +116,37 @@ export default function TodoScreen() {
     }
   }, []);
 
+  /**
+   * Vacation status and ranges. A failure is swallowed: this is context for a
+   * banner and for silencing reminders, never a reason to show the user an
+   * error over their todo list.
+   */
+  const refreshVacations = useCallback(async () => {
+    try {
+      const [status, all] = await Promise.all([
+        vacationsApi.getStatus(),
+        vacationsApi.getAll(),
+      ]);
+      setVacationStatus(status);
+      setVacations(all);
+    } catch {
+      setVacationStatus(null);
+      setVacations([]);
+    }
+  }, []);
+
   useEffect(() => {
     loadAll();
-  }, [loadAll]);
+    refreshVacations();
+  }, [loadAll, refreshVacations]);
 
-  /* ── Keep the 8:30 AM / 4:00 PM daily reminders in sync with task data ── */
+  /* ── Keep the 8:30 AM / 4:00 PM daily reminders in sync with task data ──
+     Reminders are silenced on booked days: being nagged by your todo app on
+     holiday rather defeats the point of booking the time off. */
   useEffect(() => {
     if (loading || headers.length === 0) return;
-    syncDailyReminders(headers);
-  }, [loading, headers]);
+    syncDailyReminders(headers, vacations);
+  }, [loading, headers, vacations]);
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
@@ -435,6 +470,11 @@ export default function TodoScreen() {
         label: "Add project",
         onPress: () => projectsAddRef.current?.openAdd(),
       };
+    if (vacationMode)
+      return {
+        label: "Add vacation",
+        onPress: () => vacationAddRef.current?.openAdd(),
+      };
     return {
       label: "Add header",
       onPress: () => setHeaderModalState({ mode: "add" }),
@@ -578,6 +618,22 @@ export default function TodoScreen() {
             Projects
           </Text>
         </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.toggleBtn, vacationMode && styles.toggleBtnActive]}
+          onPress={() => togglePanelMode(setVacationMode)}
+          activeOpacity={0.7}
+        >
+          <Ionicons
+            name="sunny-outline"
+            size={16}
+            color={vacationMode ? "#1e88e5" : "#656d76"}
+          />
+          <Text
+            style={[styles.toggleText, vacationMode && styles.toggleTextActive]}
+          >
+            Vacation
+          </Text>
+        </TouchableOpacity>
       </View>
 
       <ScrollView
@@ -600,6 +656,31 @@ export default function TodoScreen() {
               <Ionicons name="close" size={18} color="#e74c3c" />
             </TouchableOpacity>
           </View>
+        )}
+
+        {/* Shown in every view *except* the Vacation one, which carries its
+            own fuller banner: booking time off and forgetting is the failure
+            mode this feature actually has, but two banners stacked on the same
+            screen is just noise. */}
+        {vacationStatus?.onVacation && vacationStatus.active && !vacationMode && (
+          <TouchableOpacity
+            style={styles.vacationBanner}
+            activeOpacity={0.7}
+            onPress={() => {
+              if (!vacationMode) togglePanelMode(setVacationMode);
+            }}
+          >
+            <Ionicons name="sunny" size={16} color="#1e88e5" />
+            <Text style={styles.vacationBannerText}>
+              <Text style={styles.vacationBannerStrong}>On vacation</Text> — day{" "}
+              {vacationStatus.active.dayOfVacation} of{" "}
+              {vacationStatus.active.totalDays}
+              {vacationStatus.active.note
+                ? ` · ${vacationStatus.active.note}`
+                : ""}
+              . Missed days aren't counted against you.
+            </Text>
+          </TouchableOpacity>
         )}
 
         {/* Insights view */}
@@ -632,12 +713,30 @@ export default function TodoScreen() {
             <ProjectsSection onTasksChanged={loadAll} addRef={projectsAddRef} />
           )}
 
+        {/* Vacation view */}
+        {!insightsMode &&
+          !eventsMode &&
+          !lifeEventsMode &&
+          !goalsMode &&
+          !projectsMode &&
+          vacationMode && (
+            <VacationSection
+              addRef={vacationAddRef}
+              onStatusChanged={setVacationStatus}
+              onTasksChanged={async () => {
+                await loadAll();
+                await refreshVacations();
+              }}
+            />
+          )}
+
         {/* Headers */}
         {!insightsMode &&
           !eventsMode &&
           !lifeEventsMode &&
           !goalsMode &&
           !projectsMode &&
+          !vacationMode &&
           !byDateMode &&
           headers.map((header, idx) => {
             const visibleTasks = header.tasks;
@@ -755,6 +854,7 @@ export default function TodoScreen() {
           !lifeEventsMode &&
           !goalsMode &&
           !projectsMode &&
+          !vacationMode &&
           !byDateMode &&
           headers.length === 0 && (
             <Text style={styles.emptyText}>No headers yet — add one!</Text>
@@ -767,6 +867,7 @@ export default function TodoScreen() {
           !lifeEventsMode &&
           !goalsMode &&
           !projectsMode &&
+          !vacationMode &&
           byDateMode &&
           byDateSections.map((section, sectionIdx) => (
             <React.Fragment key={section.key}>
@@ -803,6 +904,7 @@ export default function TodoScreen() {
           !lifeEventsMode &&
           !goalsMode &&
           !projectsMode &&
+          !vacationMode &&
           byDateMode &&
           byDateSections.length === 0 && (
             <Text style={styles.emptyText}>No dated tasks to show.</Text>
@@ -950,6 +1052,26 @@ const styles = StyleSheet.create({
   toggleTextActive: {
     color: "#1e88e5",
   },
+  vacationBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: "#eef6fd",
+    borderWidth: 1,
+    borderColor: "#c5dcf5",
+    borderLeftWidth: 4,
+    borderLeftColor: "#1e88e5",
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 16,
+  },
+  vacationBannerText: {
+    flex: 1,
+    fontSize: 13,
+    color: "#1f2328",
+    lineHeight: 19,
+  },
+  vacationBannerStrong: { fontWeight: "700" },
   actionErrorBar: {
     flexDirection: "row",
     alignItems: "center",

@@ -67,6 +67,8 @@ export default function InsightsSection() {
 
   const hasArchiveData = stats && stats.eventCount > 0;
   const report = insight?.report;
+  const vacation = stats?.vacation;
+  const onVacation = vacation?.onVacation === true;
 
   return (
     <View>
@@ -74,6 +76,39 @@ export default function InsightsSection() {
         <View style={styles.errorBar}>
           <Text style={styles.errorText}>Insights error: {error}</Text>
         </View>
+      )}
+
+      {/* ── Vacation notice ──
+          Without this the numbers below look broken: a frozen window explains
+          why nothing moved, and excluded days explain a denominator that
+          shrank. */}
+      {onVacation && (
+        <View style={styles.vacationNote}>
+          <Text style={styles.vacationNoteText}>
+            <Text style={styles.vacationNoteStrong}>You're on vacation.</Text>{" "}
+            These numbers are as of {vacation.frozenAt ?? "before you left"} and
+            stay put until you're back — days off aren't counted against you,
+            and coach reports are paused. Anything you do tick off still counts
+            and will show up when you return.
+          </Text>
+        </View>
+      )}
+      {!onVacation && vacation?.justReturnedFrom && (
+        <View style={styles.vacationNote}>
+          <Text style={styles.vacationNoteText}>
+            <Text style={styles.vacationNoteStrong}>Welcome back.</Text> You
+            were away {vacation.justReturnedFrom.days} day
+            {vacation.justReturnedFrom.days === 1 ? "" : "s"} — those days don't
+            count as misses, and habit streaks start fresh from here.
+          </Text>
+        </View>
+      )}
+      {!onVacation && vacation?.vacationDaysInWindow > 0 && (
+        <Text style={styles.vacationHint}>
+          {vacation.vacationDaysInWindow} vacation day
+          {vacation.vacationDaysInWindow === 1 ? "" : "s"} in this period are
+          excluded from the rates below.
+        </Text>
       )}
 
       {/* ── Habits ── */}
@@ -101,16 +136,41 @@ export default function InsightsSection() {
                     (best {h.longestStreak})
                   </Text>
                 </Text>
+                {/* All-time count, deliberately separate from the windowed
+                    figures above — it ignores the reporting period entirely. */}
+                {h.lifetimeCompleted !== undefined && (
+                  <Text style={styles.habitLifetime}>
+                    Done {h.lifetimeCompleted} time
+                    {h.lifetimeCompleted === 1 ? "" : "s"} all-time
+                  </Text>
+                )}
+                {h.pausedDays > 0 && (
+                  <Text style={styles.habitPaused}>
+                    {h.pausedDays} vacation day
+                    {h.pausedDays === 1 ? "" : "s"} excluded
+                  </Text>
+                )}
                 <View style={styles.dotRow}>
-                  {h.recentResults.map((r) => (
-                    <View
-                      key={r.dueDate}
-                      style={[
-                        styles.dot,
-                        r.completed ? styles.dotHit : styles.dotMiss,
-                      ]}
-                    />
-                  ))}
+                  {h.recentResults.map((r) => {
+                    // Three states, not two: a vacation day the user didn't act
+                    // on is neither a hit nor a miss. Drawing it as a miss would
+                    // make the excluded day look like a failure; dropping it
+                    // would make the streak restart look like a bug.
+                    const paused = !r.completed && r.vacation;
+                    return (
+                      <View
+                        key={r.dueDate}
+                        style={[
+                          styles.dot,
+                          r.completed
+                            ? styles.dotHit
+                            : paused
+                              ? styles.dotPaused
+                              : styles.dotMiss,
+                        ]}
+                      />
+                    );
+                  })}
                 </View>
               </View>
             ))
@@ -197,7 +257,8 @@ export default function InsightsSection() {
           <TouchableOpacity
             style={[
               styles.generateBtn,
-              (generating || !hasArchiveData) && styles.generateBtnDisabled,
+              (generating || !hasArchiveData || onVacation) &&
+                styles.generateBtnDisabled,
             ]}
             onPress={handleGenerate}
             disabled={generating || !hasArchiveData}
@@ -256,8 +317,9 @@ export default function InsightsSection() {
             </>
           ) : (
             <Text style={styles.emptyText}>
-              No AI report yet — one is generated automatically every Friday,
-              or tap "Generate now".
+              {onVacation
+                ? "Coach reports are paused while you're on vacation — the next one lands after you're back, with a plan for restarting."
+                : 'No AI report yet — one is generated automatically each day, or tap "Generate now".'}
             </Text>
           )}
         </View>
@@ -369,6 +431,40 @@ const styles = StyleSheet.create({
   dotMiss: {
     backgroundColor: "#cf222e",
     opacity: 0.55,
+  },
+  /* A vacation day the user didn't act on: neither a hit nor a miss. Hollow so
+     it reads as "nothing happened here" rather than a failure — which is
+     exactly what it is, and also why the streak restarts after it. */
+  dotPaused: {
+    backgroundColor: "transparent",
+    borderWidth: 1.5,
+    borderColor: "#8b949e",
+    borderStyle: "dashed",
+  },
+  vacationNote: {
+    backgroundColor: "#eef6fd",
+    borderWidth: 1,
+    borderColor: "#c5dcf5",
+    borderLeftWidth: 4,
+    borderLeftColor: "#1e88e5",
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 16,
+  },
+  vacationNoteText: { fontSize: 13, color: "#1f2328", lineHeight: 19 },
+  vacationNoteStrong: { fontWeight: "700" },
+  vacationHint: {
+    fontSize: 12,
+    color: "#656d76",
+    marginBottom: 12,
+    lineHeight: 17,
+  },
+  habitLifetime: { fontSize: 12, color: "#656d76", marginBottom: 2 },
+  habitPaused: {
+    fontSize: 12,
+    color: "#656d76",
+    fontStyle: "italic",
+    marginBottom: 4,
   },
   bodyText: {
     fontSize: 14,

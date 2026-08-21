@@ -119,11 +119,43 @@ function buildBody({ dueNames, overdueCount }) {
 }
 
 /**
+ * Is this local day inside a booked vacation?
+ *
+ * Vacation ranges are inclusive "YYYY-MM-DD" days, so a string compare is
+ * enough. The backend measures them in UTC and this compares against the
+ * device's local day — up to a few hours of disagreement at the boundary,
+ * which is the right trade here: a reminder is not a number anyone reconciles,
+ * and it is better to fall silent an hour early than to nag on holiday.
+ *
+ * @param {Date} date
+ * @param {Array} vacations  `[{ startDate, endDate }]`
+ * @returns {boolean}
+ */
+function isVacationDay(date, vacations) {
+  if (!Array.isArray(vacations) || vacations.length === 0) return false;
+  const key = localDateKey(date);
+  return vacations.some(
+    (v) =>
+      v &&
+      typeof v.startDate === "string" &&
+      typeof v.endDate === "string" &&
+      key >= v.startDate &&
+      key <= v.endDate,
+  );
+}
+
+/**
  * Cancel and reschedule the daily reminders for the next few days based on
  * current task data. Safe to call often; never throws.
+ *
+ * Days inside a booked vacation are skipped entirely: being nagged by your
+ * todo app on holiday rather defeats the point of booking the time off, and
+ * the backend is already treating those days as excused rather than missed.
+ *
  * @param {Array} headers  Headers with their `tasks` arrays attached
+ * @param {Array} [vacations]  Booked ranges; omitted means "no vacations"
  */
-export async function syncDailyReminders(headers) {
+export async function syncDailyReminders(headers, vacations = []) {
   const Notifications = getNotifications();
   if (!Notifications) return; // Expo Go on Android — reminders need a real build
 
@@ -144,6 +176,9 @@ export async function syncDailyReminders(headers) {
     for (let offset = 0; offset < DAYS_AHEAD; offset++) {
       const day = new Date(now);
       day.setDate(now.getDate() + offset);
+
+      // Silent while away — the whole point of booking the time off.
+      if (isVacationDay(day, vacations)) continue;
 
       const pending = pendingForDay(headers, day, offset === 0);
       if (pending.dueNames.length === 0 && pending.overdueCount === 0) continue;

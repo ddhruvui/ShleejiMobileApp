@@ -18,7 +18,8 @@ Every tab's add action is a single **"+" button in the blue title bar**, beside
 the screen title — there are no labelled "+ Add X" buttons. On **Todo** that one
 button follows the view that is showing: it adds a header in the todo and By
 Date lists, a project in Projects, a goal in Goals, an event in Events, a life
-event in Life Events, and is hidden in Insights (nothing to add there).
+event in Life Events, a vacation in Vacation, and is hidden in Insights
+(nothing to add there).
 **Counter** is the exception — it keeps its original pair of labelled white
 buttons, **Reset** and **+ Add**, stacked at the right of its blue header.
 
@@ -39,7 +40,8 @@ configured in `api/client.js`).
   then past dates, then future dates, with thick dividers between the
   present, past and future sections), **Insights** (see below),
   **Events** (see below), **Life Events** (see below), **Goals** (see below),
-  **Projects** (see below). The panel toggles (everything except By Date)
+  **Projects** (see below), **Vacation** (see below). The panel toggles
+  (everything except By Date)
   are mutually exclusive: tapping one opens that view and deactivates
   whichever was open, and tapping the active one returns to the todo list.
   By Date is a todo-list filter, stays active while a panel is open, and
@@ -128,9 +130,36 @@ configured in `api/client.js`).
   When the todo task is done and the backend's nightly cron deletes it, the
   project task is marked done and **retained in the project** as a
   completed step (its date is kept for the record)
+- **Vacation** — periods you booked off. Each vacation is a start and an end
+  date, **both inclusive** (the day you leave and the day you get back are both
+  vacation days) and both required, which is what lets a trip be booked months
+  ahead. Ranges can't overlap; a trip can be edited afterwards (forgot to book
+  it, came home early) or deleted. Rows show the length, whether the trip is
+  past/upcoming/on now, and expand to a **re-date list**: the undone one-time
+  dated tasks that fall inside the window, each with a one-tap "Move to <first
+  day back>". Those moves are sent with `vacationMove`, so they're never
+  counted as postponement — needed because a trip booked in advance is re-dated
+  before it starts. Repeating tasks aren't listed: they can't be moved without
+  changing their schedule, so the backend excuses those days instead. **An
+  active vacation shows a banner above every Todo view** (except the Vacation view itself, which has its own fuller one) (booking time off and
+  forgetting is the failure mode this feature actually has), and **daily
+  reminders are silenced** for booked days
+- **What vacation changes** — it's a lens on the history, not a pause button:
+  the backend cron runs unchanged, and anything ticked off while away still
+  counts. What changes is how the archive is read — a missed day on vacation is
+  *paused*, not missed (out of completion rates and per-weekday miss counts),
+  slippage has the days away subtracted from it, postpones and deletions are
+  labelled rather than flagged, and a call period is only excused when a trip
+  swallowed ≥80% of it. **Streaks restart on return rather than spanning the
+  break.** While away, the Insights numbers freeze at the day before departure
+  and coach reports are skipped entirely; the first report back opens with a
+  restart plan
 - **Insights** — habit stats and AI coaching from the backend archive:
-  - Habit cards: completion %, current/best streak, hit/miss dot row of recent
-    scheduled days (habits = tasks scheduled by day of week)
+  - Habit cards: completion %, current/best streak, the **all-time** number of
+    times the habit has been done, and a dot row of recent scheduled days
+    (habits = tasks scheduled by day of week). The dots have three states — hit,
+    miss, and a hollow **paused** pip for a vacation day, which is neither. A
+    card also names how many vacation days were excluded
   - Task stats: one-time completions, how many landed on or before their
     planned date (finishing early or on the day counts as on time), the average
     slip past the planned date when some ran late, and the most-rescheduled
@@ -138,11 +167,16 @@ configured in `api/client.js`).
   - Coach: the latest AI report (summary, on track / slipping, task insights,
     procrastination flags, calls to make, suggestions) with a "Generate now"
     button — "Calls to make" appears only for reports generated after the
-    Calls feature. The backend generates a report on its own **once a week, on
-    Friday**; "Generate now" is not limited by that
+    Calls feature. The backend generates a report on its own **once per day**;
+    "Generate now" is not limited by that, except while on vacation, when
+    reports are paused and the button is disabled
+  - A vacation notice when relevant: that the numbers are frozen and as of which
+    day, a welcome-back line after a trip, or how many vacation days in the
+    period were excluded from the rates
 - **Daily reminders** — local notifications at **8:30 AM** and **4:00 PM**
   (device local time) listing the day's pending tasks and an overdue count.
-  Slots with nothing pending are skipped.
+  Slots with nothing pending are skipped, and **days inside a booked vacation
+  are skipped entirely**.
 
 ### How reminders work (`utils/notifications.js`)
 
@@ -152,6 +186,12 @@ configured in `api/client.js`).
   pause until the next open.
 - A task counts as pending for a day when its ECD makes it due that day and it
   isn't done; overdue one-time tasks are counted separately.
+- `syncDailyReminders(headers, vacations)` skips any day inside a booked
+  vacation — being nagged by your todo app on holiday rather defeats the point.
+  The check compares the device's **local** day against the range, while the
+  backend measures the same range in UTC; they can disagree by a few hours at a
+  boundary, which is the right trade for a reminder (better to fall silent an
+  hour early than to nag on holiday).
 - **Expo Go on Android does not support notifications (SDK 53+)** — the app
   detects this and silently skips scheduling there. Use a development or EAS
   build to test reminders on Android; iOS Expo Go shows local notifications.
@@ -175,6 +215,8 @@ Shleeji/
 │   ├── AffirmationModal.js    # Add/edit (+ delete) affirmation modal
 │   ├── CallModal.js           # Add/edit call modal (name + biweekly/monthly)
 │   ├── InsightsSection.js     # Insights view (stats + AI report)
+│   ├── VacationSection.js     # Vacation view (ranges + the re-date list)
+│   ├── VacationModal.js       # Book/edit a vacation (two inclusive dates)
 │   ├── EventsSection.js  EventModal.js  ScheduleEventModal.js   # Events view
 │   ├── LifeEventsSection.js  LifeEventModal.js                   # Life Events view
 │   ├── GoalsSection.js  GoalModal.js  AddStepModal.js            # Goals view
@@ -189,13 +231,14 @@ Shleeji/
 │   ├── lifeevents.js          # /lifeevents CRUD (annually recurring dates)
 │   ├── goals.js               # /goals CRUD (habit backlogs)
 │   ├── projects.js            # /projects CRUD (long term projects)
+│   ├── vacations.js           # /vacations CRUD + /status + the re-date task list
 │   └── insights.js            # /insights/stats, /insights/latest, /insights/generate
 └── utils/
     ├── ecd.js                 # ECD due-today/date-key helpers
     ├── goalSync.js            # goal step ↔ todo sync + habit-day helpers
     ├── projectSync.js         # project task ↔ todo sync helpers
     ├── lifeEventSync.js       # life event ↔ todo sync helpers
-    └── notifications.js       # 8:30 AM / 4:00 PM daily reminders
+    └── notifications.js       # 8:30 AM / 4:00 PM daily reminders (silent on vacation days)
 ```
 
 ## Running
