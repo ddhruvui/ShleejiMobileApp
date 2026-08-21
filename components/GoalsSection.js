@@ -15,7 +15,6 @@ import { Ionicons } from "@expo/vector-icons";
 import * as goalsApi from "../api/goals";
 import * as headersApi from "../api/headers";
 import * as tasksApi from "../api/tasks";
-import * as insightsApi from "../api/insights";
 import GoalModal from "./GoalModal";
 import AddStepModal from "./AddStepModal";
 import StepDaysModal from "./StepDaysModal";
@@ -24,8 +23,10 @@ import {
   ONE_STEP_HEADER,
   daysLabel,
   daysToEcd,
+  fetchOneStepStreaks,
   isOneStepHeaderName,
   stepDays,
+  streakFor,
 } from "../utils/goalSync";
 
 /**
@@ -80,31 +81,12 @@ export default function GoalsSection({ onTasksChanged, addRef }) {
   }, []);
 
   /**
-   * Habit streaks for the started steps, from the same archive stats the
-   * Insights view reads. The archive only records a result on days the task's
-   * ECD covers, so a streak here counts scheduled days: a Mon/Wed/Fri habit
-   * survives an untouched Tuesday.
-   *
-   * Habits are matched by name under the "One Step At A Time" header — the
-   * same case-insensitive link the rest of the goal↔todo sync uses. Failure is
-   * silent: stats are decoration on this view, not the reason it exists.
+   * Habit streaks for the started steps — the same map the todo builds for its
+   * "One Step At A Time" cards, so both views show a habit the same number.
+   * A failure leaves it null and simply hides the badges.
    */
   const loadStreaks = useCallback(async () => {
-    try {
-      const stats = await insightsApi.getStats();
-      const map = {};
-      for (const habit of stats.habits) {
-        if (!habit.headerName || !isOneStepHeaderName(habit.headerName))
-          continue;
-        map[habit.taskName.trim().toLowerCase()] = {
-          current: habit.currentStreak,
-          longest: habit.longestStreak,
-        };
-      }
-      setStreaks(map);
-    } catch {
-      setStreaks(null);
-    }
+    setStreaks(await fetchOneStepStreaks());
   }, []);
 
   useEffect(() => {
@@ -444,8 +426,7 @@ export default function GoalsSection({ onTasksChanged, addRef }) {
                 const isLast = i === steps.length - 1;
                 const started = step.status !== "pending";
                 const days = stepDays(step);
-                const streak =
-                  streaks && streaks[step.name.trim().toLowerCase()];
+                const streak = streakFor(streaks, step.name);
                 // Moves stay inside the step's own group — mirrors the todo's
                 // done/undone barrier
                 const canMoveUp =

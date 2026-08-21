@@ -86,7 +86,11 @@ configured in `api/client.js`).
   the task's ECD to match, and a **streak badge** ("🔥 4") read from
   `GET /insights/stats`. The nightly archive only records a result on days the
   habit is due, so the streak counts scheduled days only: an untouched Tuesday
-  can't break a Mon/Wed/Fri habit. The goal heading's badge (e.g. "1/4 under
+  can't break a Mon/Wed/Fri habit. **The habit's task in the Todo tab shows
+  the same badge** (in the header list and in By Date), so the streak is
+  visible where the habit is actually ticked off, not only in the Goals view.
+  Only the nightly run moves the number — ticking a habit off today shows up
+  tomorrow. The goal heading's badge (e.g. "1/4 under
   progress") tracks how many steps are running. Goals are ordered with move up/down arrows on the heading (a
   server-side contiguous priority, like headers and projects), and each step
   has its own move up/down and delete — deleting an under-progress step

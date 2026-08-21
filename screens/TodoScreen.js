@@ -27,9 +27,11 @@ import { getEcdDateKey, formatDateKey, todayDateKey } from "../utils/ecd";
 import { syncDailyReminders } from "../utils/notifications";
 import * as vacationsApi from "../api/vacations";
 import {
+  fetchOneStepStreaks,
   isOneStepHeaderName,
   pauseStepsMatchingTask,
   pauseAllStartedSteps,
+  streakFor,
 } from "../utils/goalSync";
 import {
   syncProjectTasksForTodoDone,
@@ -48,6 +50,10 @@ export default function TodoScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
+  // Habit streaks for the tasks under "One Step At A Time", keyed by name —
+  // the same badge the Goals view puts on the step each of them belongs to.
+  // Null while it is loading and after a failed fetch, which just hides them.
+  const [streaks, setStreaks] = useState(null);
   const [actionError, setActionError] = useState(null);
   const [byDateMode, setByDateMode] = useState(false);
   const [insightsMode, setInsightsMode] = useState(false);
@@ -117,6 +123,15 @@ export default function TodoScreen() {
   }, []);
 
   /**
+   * Habit streaks, refreshed alongside the todo. Only the nightly archive
+   * moves these numbers, so ticking a habit off today does not change the
+   * badge until the cron has scored the day.
+   */
+  const refreshStreaks = useCallback(async () => {
+    setStreaks(await fetchOneStepStreaks());
+  }, []);
+
+  /**
    * Vacation status and ranges. A failure is swallowed: this is context for a
    * banner and for silencing reminders, never a reason to show the user an
    * error over their todo list.
@@ -138,7 +153,8 @@ export default function TodoScreen() {
   useEffect(() => {
     loadAll();
     refreshVacations();
-  }, [loadAll, refreshVacations]);
+    refreshStreaks();
+  }, [loadAll, refreshVacations, refreshStreaks]);
 
   /* ── Keep the 8:30 AM / 4:00 PM daily reminders in sync with task data ──
      Reminders are silenced on booked days: being nagged by your todo app on
@@ -151,7 +167,8 @@ export default function TodoScreen() {
   const onRefresh = useCallback(() => {
     setRefreshing(true);
     loadAll();
-  }, [loadAll]);
+    refreshStreaks();
+  }, [loadAll, refreshStreaks]);
 
   /* ── Reload tasks for a single header ── */
   const reloadHeaderTasks = useCallback(async (headerId) => {
@@ -832,6 +849,11 @@ export default function TodoScreen() {
                           : undefined
                       }
                       goalManaged={oneStepHeaderIds.has(header._id)}
+                      streak={
+                        oneStepHeaderIds.has(header._id)
+                          ? streakFor(streaks, task.name)
+                          : undefined
+                      }
                       onToggleDone={handleToggleDone(header._id)}
                       onEdit={handleEditTask(header._id)}
                       onMoveUp={handleMoveTaskUp(header._id)}
@@ -887,6 +909,11 @@ export default function TodoScreen() {
                         isFirst
                         isLast
                         goalManaged={oneStepHeaderIds.has(task.headerId)}
+                        streak={
+                          oneStepHeaderIds.has(task.headerId)
+                            ? streakFor(streaks, task.name)
+                            : undefined
+                        }
                         onToggleDone={handleToggleDone(task.headerId)}
                         onEdit={handleEditTask(task.headerId)}
                         onMoveUp={handleMoveTaskUp(task.headerId)}
