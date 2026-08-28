@@ -2,7 +2,7 @@
 
 Expo / React Native app (plain JavaScript, no TypeScript) with five bottom tabs (`App.js`):
 
-- **Dream** (`screens/DreamScreen.js`) — vision board: masonry grid of device-library photos, persisted locally in AsyncStorage (`dreamPhotos`). Add via expo-image-picker, reorder, remove.
+- **Dream** (`screens/DreamScreen.js`) — vision board: masonry grid of device-library photos, persisted locally in AsyncStorage (`dreamPhotos`). Add via expo-image-picker, reorder, remove. **This is the only screen that holds a wake lock** (`expo-keep-awake`, tag `dream-board`): the phone must not auto-lock while you're looking at the board or an expanded photo. It is acquired/released from `useFocusEffect`, not on mount — bottom-tab screens stay mounted after their first visit, so a mount-scoped lock would keep the screen on for the whole app.
 - **Affirmations** (`screens/AffirmationsScreen.js`) — daily affirmations list (backend `/affirmations`): add/edit/delete short lines to read every day, synced with the web app.
 - **Todo** (`screens/TodoScreen.js`) — full TaskAtHand client: header/task CRUD, ECDs, By-Date/Insights/Events/Life Events/Goals/Projects filters, event templates, AI insights, daily local notifications (8:30 AM and 4:00 PM device time).
 - **Calls** (`screens/CallsScreen.js`) — people to ring (backend `/calls`): Biweekly and Monthly sections with a "called" checkbox per person; the backend's nightly cron unchecks biweekly people on the 15th and everyone on the last day of the month.

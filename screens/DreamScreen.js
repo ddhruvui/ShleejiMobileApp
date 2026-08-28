@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import {
   StyleSheet,
   View,
@@ -14,9 +14,12 @@ import {
 import * as ImagePicker from "expo-image-picker";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
+import { useFocusEffect } from "@react-navigation/native";
+import { activateKeepAwakeAsync, deactivateKeepAwake } from "expo-keep-awake";
 import AddButton from "../components/AddButton";
 
 const { width, height } = Dimensions.get("window");
+const KEEP_AWAKE_TAG = "dream-board";
 const COLUMN_COUNT = 2;
 const GAP = 8;
 const PADDING = 8;
@@ -31,6 +34,19 @@ export default function DreamScreen() {
     loadPhotos();
     requestPermissions();
   }, []);
+
+  // A vision board that blanks out after 30 seconds isn't much of one. Hold the
+  // screen on while this tab is focused — that covers the expanded-photo modal
+  // too — and release it on the way out so the other tabs sleep normally. Tabs
+  // stay mounted once visited, so this has to key off focus, not mount.
+  useFocusEffect(
+    useCallback(() => {
+      activateKeepAwakeAsync(KEEP_AWAKE_TAG).catch(() => {});
+      return () => {
+        deactivateKeepAwake(KEEP_AWAKE_TAG).catch(() => {});
+      };
+    }, []),
+  );
 
   const requestPermissions = async () => {
     if (Platform.OS !== "web") {

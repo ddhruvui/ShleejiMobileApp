@@ -4,7 +4,7 @@ Expo / React Native mobile app for TaskAtHand, with five tabs:
 
 | Tab       | What it does                                                                 |
 | --------- | ---------------------------------------------------------------------------- |
-| **Dream** | Vision board — add inspiration images from the photo library (masonry grid) |
+| **Dream** | Vision board — add inspiration images from the photo library (masonry grid). The screen stays awake while this tab is open, including with a photo expanded |
 | **Affirmations** | Daily affirmations — a scrollable list of short lines to read every day; add, edit, delete (synced with the web app via the backend) |
 | **Todo**  | Full TaskAtHand client — headers, tasks, ECDs, filters, and Insights         |
 | **Calls** | People to ring — Biweekly and Monthly sections; check off who you've called (the backend cron unchecks biweekly people on the 15th and everyone on the last day of the month); add, edit, delete (synced with the web app via the backend) |
@@ -285,3 +285,6 @@ npm run publish -- "message" # OTA update to preview branch
 - Counter and Dream data persist locally in AsyncStorage (not synced to the
   backend); Affirmations and Calls are stored in the backend and sync with
   the web app.
+- The Dream tab prevents the phone from auto-locking while it is the active
+  tab (`expo-keep-awake`); normal auto-lock resumes as soon as you switch to
+  another tab or leave the app.
