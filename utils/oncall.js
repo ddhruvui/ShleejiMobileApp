@@ -150,56 +150,71 @@ export function parseQuickAdd(text, now) {
   return { date: dateKeyOf(candidate), start, end, type };
 }
 
-/** The Monday on or before a date key. */
-export function weekStartKey(key) {
-  const [y, m, d] = key.split("-").map(Number);
-  const dow = new Date(y, m - 1, d).getDay(); // 0 = Sun
-  return addDaysToDateKey(key, -((dow + 6) % 7));
-}
+const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
-/** One bar on the timeline: a shift's slice of a single day. */
 /**
- * Split shifts into per-day segments for the 7 days from `weekStart`.
- * An overnight shift becomes two bars: [start, 24:00) on its day and
- * [00:00, end) on the next.
+ * A long span the way people say it: under a day reads like
+ * `formatDuration` ("8h 30m"), a day or more drops the minutes
+ * ("2d 11h", "7d").
  */
-export function weekSegments(shifts, weekStart) {
-  const days = Array.from({ length: 7 }, (_, i) => ({
-    date: addDaysToDateKey(weekStart, i),
-    segments: [],
-  }));
-  const byDate = new Map(days.map((d) => [d.date, d]));
-
-  for (const shift of shifts) {
-    const from = startMinutes(shift.start);
-    const length = shiftMinutes(shift);
-    if (from === null || length === 0) continue;
-    const to = from + length;
-    if (to <= MINUTES_PER_DAY) {
-      byDate.get(shift.date)?.segments.push({ shift, from, to, part: "whole" });
-    } else {
-      byDate
-        .get(shift.date)
-        ?.segments.push({ shift, from, to: MINUTES_PER_DAY, part: "start" });
-      byDate
-        .get(addDaysToDateKey(shift.date, 1))
-        ?.segments.push({
-          shift,
-          from: 0,
-          to: to - MINUTES_PER_DAY,
-          part: "end",
-        });
-    }
-  }
-  for (const day of days) day.segments.sort((a, b) => a.from - b.from);
-  return days;
+export function formatSpan(minutes) {
+  const total = Math.max(0, Math.round(minutes));
+  if (total < MINUTES_PER_DAY) return formatDuration(total);
+  const days = Math.floor(total / MINUTES_PER_DAY);
+  const hours = Math.floor((total % MINUTES_PER_DAY) / 60);
+  return hours === 0 ? `${days}d` : `${days}d ${hours}h`;
 }
 
-/** Minutes of each type that fall inside the week. */
-export function weekTotals(shifts, weekStart) {
-  const totals = { primary: 0, secondary: 0 };
-  for (const day of weekSegments(shifts, weekStart)) {
-    for (const seg of day.segments) totals[seg.shift.type] += seg.to - seg.from;
+/**
+ * A moment as the on-call agenda words it, on the local clock: "Today 22:00",
+ * "Tomorrow 09:00", otherwise "Tue 11/24 09:00" — the todo's MM/DD, plus
+ * "/YY" outside the current year.
+ */
+export function formatMoment(date, now) {
+  const time = `${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  const key = dateKeyOf(date);
+  const today = dateKeyOf(now);
+  if (key === today) return `Today ${time}`;
+  if (key === addDaysToDateKey(today, 1)) return `Tomorrow ${time}`;
+  const year =
+    date.getFullYear() === now.getFullYear()
+      ? ""
+      : `/${String(date.getFullYear()).slice(-2)}`;
+  return `${WEEKDAYS[date.getDay()]} ${pad(date.getMonth() + 1)}/${pad(date.getDate())}${year} ${time}`;
+}
+
+/**
+ * The on-call agenda: upcoming shifts in start order, with the off-call gaps
+ * between them — "Not on call from Mon 11/16 22:00 to Tue 11/24 09:00"
+ * instead of paging through weeks.
+ *
+ * Overlapping or back-to-back shifts (one ending as the next starts) are one
+ * stretch of cover, so no gap opens inside it. When `now` isn't covered, the
+ * agenda opens with the gap from now to the first shift (`fromNow`).
+ *
+ * @returns `items` — `{ kind: "shift", shift }` and
+ *   `{ kind: "gap", from, to, minutes, fromNow }` in time order — and
+ *   `freeAfter`, the Date the last stretch of cover ends (null with no
+ *   upcoming shifts).
+ */
+export function onCallAgenda(shifts, now) {
+  const items = [];
+  let coverEnd = null;
+  for (const shift of upcomingShifts(shifts, now)) {
+    const start = shiftStart(shift);
+    const from = coverEnd ?? now;
+    if (start > from) {
+      items.push({
+        kind: "gap",
+        from,
+        to: start,
+        minutes: Math.round((start.getTime() - from.getTime()) / 60000),
+        fromNow: coverEnd === null,
+      });
+    }
+    items.push({ kind: "shift", shift });
+    const end = shiftEnd(shift);
+    if (!coverEnd || end > coverEnd) coverEnd = end;
   }
-  return totals;
+  return { items, freeAfter: coverEnd };
 }

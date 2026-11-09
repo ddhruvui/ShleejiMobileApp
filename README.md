@@ -157,11 +157,14 @@ configured in `api/client.js`).
   forgetting is the failure mode this feature actually has), and **daily
   reminders are silenced** for booked days
 - **On-call** — your on-call shifts (date, start–end, primary or secondary),
-  **kept separate: they never change a task**. A compact Mon–Sun timeline
-  (‹ › between weeks, the week's primary/secondary hours) shows each shift as
-  a bar — **primary solid red, secondary a dashed red outline** — with an
-  overnight shift split across the two days and a line marking now; below it,
-  the upcoming shifts with edit/delete. The title-bar "+" opens a bottom sheet
+  **kept separate: they never change a task**. One agenda of the upcoming
+  shifts (edit/delete, **primary with a solid red edge, secondary a dashed
+  one**, overnight shifts marked "+1") with the **off-call gaps spelled out
+  between them** — "Not on call from Mon 11/16 22:00 to Tue 11/24 09:00 ·
+  7d 11h" — instead of paging week by week. Back-to-back or overlapping
+  shifts count as one stretch of cover; when you're free right now it opens
+  with "Not on call now · until …", and it ends with "Nothing scheduled
+  after …". The title-bar "+" opens a bottom sheet
   whose quick-add field takes the shorthand `11/16 9-22` (add `s` for
   secondary; `22-6` runs past midnight; `24` is a legal end) and fills the
   type, date and time fields; Primary is the default. Ended shifts disappear
@@ -241,7 +244,7 @@ Shleeji/
 │   ├── InsightsSection.js     # Insights view (stats + AI report)
 │   ├── VacationSection.js     # Vacation view (ranges + the re-date list)
 │   ├── VacationModal.js       # Book/edit a vacation (two inclusive dates)
-│   ├── OnCallSection.js       # On-call view (week timeline + upcoming shifts)
+│   ├── OnCallSection.js       # On-call view (agenda of shifts + off-call gaps)
 │   ├── OnCallModal.js         # Add/edit shift bottom sheet (quick add, type, times)
 │   ├── EventsSection.js  EventModal.js  ScheduleEventModal.js   # Events view
 │   ├── LifeEventsSection.js  LifeEventModal.js                   # Life Events view
@@ -265,7 +268,7 @@ Shleeji/
     ├── goalSync.js            # goal step ↔ todo sync + habit-day helpers
     ├── projectSync.js         # project task ↔ todo sync helpers
     ├── lifeEventSync.js       # life event ↔ todo sync helpers
-    ├── oncall.js              # on-call shift maths + quick-add parser (mirrors web utils/oncall.ts)
+    ├── oncall.js              # on-call shift maths, quick-add parser, agenda + gap wording (mirrors web utils/oncall.ts)
     └── notifications.js       # 8:30 AM / 4:00 PM daily reminders (silent on vacation days)
 ```
 

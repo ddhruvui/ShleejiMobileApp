@@ -15,51 +15,28 @@ import { Ionicons } from "@expo/vector-icons";
 import * as onCallApi from "../api/oncall";
 import OnCallModal from "./OnCallModal";
 import ConfirmModal from "./ConfirmModal";
-import { addDaysToDateKey, formatDateKey } from "../utils/ecd";
+import { formatDateKey } from "../utils/ecd";
 import {
-  MINUTES_PER_DAY,
   dateKeyOf,
   formatDuration,
+  formatMoment,
+  formatSpan,
   isActive,
   isOvernight,
+  onCallAgenda,
   shiftMinutes,
-  upcomingShifts,
-  weekSegments,
-  weekStartKey,
-  weekTotals,
 } from "../utils/oncall";
 
 const RED = "#cf222e";
 const RED_TEXT = "#a40e26";
 const RED_SOFT = "rgba(207,34,46,0.08)";
 const RED_BORDER = "rgba(207,34,46,0.55)";
-const DOW = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-const SHORT_MONTHS = [
-  "Jan",
-  "Feb",
-  "Mar",
-  "Apr",
-  "May",
-  "Jun",
-  "Jul",
-  "Aug",
-  "Sep",
-  "Oct",
-  "Nov",
-  "Dec",
-];
-
-/** "2026-11-09" → "Nov 9", parsed by component (never `new Date(key)`). */
-function shortDay(key) {
-  const [, m, d] = key.split("-").map(Number);
-  return `${SHORT_MONTHS[m - 1]} ${d}`;
-}
-
-const pct = (minutes) => `${(minutes / MINUTES_PER_DAY) * 100}%`;
-
 /**
- * On-call view (option B, mirrors the web FE's OnCallPanel): a compact week
- * timeline of shift bars over a list of upcoming shifts.
+ * On-call view (mirrors the web FE's OnCallPanel): one agenda of upcoming
+ * shifts with the off-call gaps between them — "Not on call from Mon 11/16
+ * 22:00 to Tue 11/24 09:00" — instead of paging through weeks. Back-to-back
+ * or overlapping shifts are one stretch of cover (no gap inside); when the
+ * user isn't on call right now the agenda opens with "Not on call now".
  *
  * On-call is a record kept apart from the todo — nothing here touches tasks.
  * Primary shifts are solid red, secondary ones a dashed outline in the same
@@ -74,9 +51,6 @@ export default function OnCallSection({ addRef, onShiftsChanged }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [now, setNow] = useState(() => new Date());
-  const [weekStart, setWeekStart] = useState(() =>
-    weekStartKey(dateKeyOf(new Date())),
-  );
   const [modalState, setModalState] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
 
@@ -147,11 +121,12 @@ export default function OnCallSection({ addRef, onShiftsChanged }) {
   }
 
   const today = dateKeyOf(now);
-  const thisWeek = weekStartKey(today);
-  const upcoming = upcomingShifts(shifts, now);
-  const days = weekSegments(upcoming, weekStart);
-  const totals = weekTotals(upcoming, weekStart);
-  const nowMinutes = now.getHours() * 60 + now.getMinutes();
+  const { items, freeAfter } = onCallAgenda(shifts, now);
+  const shiftCount = items.filter((i) => i.kind === "shift").length;
+  const totalMinutes = items.reduce(
+    (sum, i) => (i.kind === "shift" ? sum + shiftMinutes(i.shift) : sum),
+    0,
+  );
 
   return (
     <View>
@@ -164,79 +139,7 @@ export default function OnCallSection({ addRef, onShiftsChanged }) {
         </View>
       )}
 
-      {/* ── Week timeline ── */}
-      <View style={styles.card}>
-        <View style={styles.weekHeader}>
-          <TouchableOpacity
-            onPress={() => setWeekStart(addDaysToDateKey(weekStart, -7))}
-            disabled={weekStart <= thisWeek}
-            style={[styles.navBtn, weekStart <= thisWeek && styles.navBtnDisabled]}
-            accessibilityLabel="Previous week"
-          >
-            <Ionicons name="chevron-back" size={16} color="#656d76" />
-          </TouchableOpacity>
-          <Text style={styles.weekLabel}>
-            {shortDay(weekStart)} – {shortDay(addDaysToDateKey(weekStart, 6))}
-          </Text>
-          <TouchableOpacity
-            onPress={() => setWeekStart(addDaysToDateKey(weekStart, 7))}
-            style={styles.navBtn}
-            accessibilityLabel="Next week"
-          >
-            <Ionicons name="chevron-forward" size={16} color="#656d76" />
-          </TouchableOpacity>
-          <Text style={styles.totals}>
-            {formatDuration(totals.primary)} primary
-            {totals.secondary > 0
-              ? ` · ${formatDuration(totals.secondary)} sec`
-              : ""}
-          </Text>
-        </View>
-
-        {days.map((day, i) => {
-          const isToday = day.date === today;
-          return (
-            <View key={day.date} style={styles.dayRow}>
-              <Text style={[styles.dayLabel, isToday && styles.dayLabelToday]}>
-                {DOW[i]}
-              </Text>
-              <View style={styles.track}>
-                {day.segments.map((seg) => (
-                  <View
-                    key={`${seg.shift._id}-${seg.part}`}
-                    style={[
-                      styles.bar,
-                      seg.shift.type === "primary"
-                        ? styles.barPrimary
-                        : styles.barSecondary,
-                      { left: pct(seg.from), width: pct(seg.to - seg.from) },
-                    ]}
-                  />
-                ))}
-                {isToday && (
-                  <View style={[styles.nowLine, { left: pct(nowMinutes) }]} />
-                )}
-              </View>
-            </View>
-          );
-        })}
-        <View style={styles.axis}>
-          {["0", "6", "12", "18", "24"].map((h) => (
-            <Text key={h} style={styles.axisText}>
-              {h}
-            </Text>
-          ))}
-        </View>
-        <View style={styles.legend}>
-          <View style={[styles.swatch, styles.barPrimary]} />
-          <Text style={styles.legendText}>Primary</Text>
-          <View style={[styles.swatch, styles.barSecondary]} />
-          <Text style={styles.legendText}>Secondary</Text>
-        </View>
-      </View>
-
-      {/* ── Upcoming list ── */}
-      {upcoming.length === 0 ? (
+      {shiftCount === 0 ? (
         <Text style={styles.emptyText}>
           No upcoming on-call shifts — add one with the + above. Type the
           shorthand you already use, like 11/16 9-22. On-call is kept separate
@@ -244,7 +147,36 @@ export default function OnCallSection({ addRef, onShiftsChanged }) {
         </Text>
       ) : (
         <View style={styles.list}>
-          {upcoming.map((shift) => {
+          <View style={styles.listHeader}>
+            <Text style={styles.listTitle}>Upcoming</Text>
+            <Text style={styles.totals}>
+              {shiftCount} {shiftCount === 1 ? "shift" : "shifts"} ·{" "}
+              {formatDuration(totalMinutes)} on call
+            </Text>
+          </View>
+          {items.map((item) => {
+            if (item.kind === "gap") {
+              return (
+                <View
+                  key={`gap-${item.from.getTime()}`}
+                  style={[styles.gapRow, item.fromNow && styles.gapRowNow]}
+                >
+                  <View style={styles.gapRail} />
+                  <View style={styles.rowMain}>
+                    <Text style={styles.gapTitle}>
+                      Not on call{item.fromNow ? " now" : ""}
+                    </Text>
+                    <Text style={styles.rowMeta}>
+                      {item.fromNow
+                        ? `until ${formatMoment(item.to, now)}`
+                        : `from ${formatMoment(item.from, now)} to ${formatMoment(item.to, now)}`}
+                    </Text>
+                  </View>
+                  <Text style={styles.gapSpan}>{formatSpan(item.minutes)}</Text>
+                </View>
+              );
+            }
+            const { shift } = item;
             const active = isActive(shift, now);
             return (
               <View
@@ -291,6 +223,13 @@ export default function OnCallSection({ addRef, onShiftsChanged }) {
               </View>
             );
           })}
+          {freeAfter && (
+            <View style={styles.endRow}>
+              <Text style={styles.endText}>
+                Nothing scheduled after {formatMoment(freeAfter, now)}
+              </Text>
+            </View>
+          )}
         </View>
       )}
 
@@ -331,74 +270,6 @@ const styles = StyleSheet.create({
     borderColor: "#fde8e8",
   },
   errorText: { fontSize: 13, color: "#e74c3c", flex: 1, marginRight: 8 },
-  card: {
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: "#eaeef2",
-    borderRadius: 10,
-    backgroundColor: "#fff",
-    padding: 12,
-  },
-  weekHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    marginBottom: 10,
-  },
-  navBtn: {
-    width: 26,
-    height: 26,
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1,
-    borderColor: "#d0d7de",
-    borderRadius: 6,
-  },
-  navBtnDisabled: { opacity: 0.4 },
-  weekLabel: { fontSize: 13, fontWeight: "700", color: "#1f2328" },
-  totals: { marginLeft: "auto", fontSize: 11, color: "#656d76" },
-  dayRow: { flexDirection: "row", alignItems: "center", marginBottom: 5 },
-  dayLabel: { width: 36, fontSize: 11, color: "#656d76" },
-  dayLabelToday: { color: "#1f2328", fontWeight: "700" },
-  track: {
-    flex: 1,
-    height: 16,
-    borderRadius: 4,
-    backgroundColor: "#f6f8fa",
-    borderWidth: 1,
-    borderColor: "#eaeef2",
-  },
-  bar: { position: "absolute", top: -1, bottom: -1, borderRadius: 4 },
-  barPrimary: { backgroundColor: RED },
-  barSecondary: {
-    backgroundColor: RED_SOFT,
-    borderWidth: 1.5,
-    borderStyle: "dashed",
-    borderColor: RED_BORDER,
-  },
-  nowLine: {
-    position: "absolute",
-    top: -4,
-    bottom: -4,
-    width: 2,
-    backgroundColor: "#1f2328",
-  },
-  axis: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginLeft: 36,
-    marginTop: 2,
-  },
-  axisText: { fontSize: 10, color: "#656d76" },
-  legend: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    marginLeft: 36,
-    marginTop: 8,
-  },
-  swatch: { width: 14, height: 10, borderRadius: 3 },
-  legendText: { fontSize: 11, color: "#656d76", marginRight: 10 },
   emptyText: {
     fontSize: 14,
     color: "#656d76",
@@ -414,7 +285,6 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     backgroundColor: "#fff",
     overflow: "hidden",
-    paddingRight: 8,
   },
   row: {
     flexDirection: "row",
@@ -422,6 +292,7 @@ const styles = StyleSheet.create({
     gap: 6,
     paddingVertical: 11,
     paddingLeft: 11,
+    paddingRight: 8,
     borderBottomWidth: 1,
     borderBottomColor: "#eaeef2",
     borderLeftWidth: 3,
@@ -444,5 +315,53 @@ const styles = StyleSheet.create({
   },
   pillNow: { backgroundColor: RED, borderColor: RED, color: "#fff" },
   rowMeta: { fontSize: 12, color: "#656d76", marginTop: 2 },
+  listHeader: {
+    flexDirection: "row",
+    alignItems: "baseline",
+    justifyContent: "space-between",
+    paddingVertical: 10,
+    paddingLeft: 14,
+    paddingRight: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: "#eaeef2",
+  },
+  listTitle: { fontSize: 15, fontWeight: "700", color: "#1f2328" },
+  totals: { fontSize: 11, color: "#656d76" },
+  /* Off-call gap: a quiet row with a dashed grey rail where a shift's
+     coloured edge would be — the absence of cover, not an entry. */
+  gapRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingVertical: 9,
+    paddingLeft: 14,
+    paddingRight: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: "#eaeef2",
+    backgroundColor: "#f6f8fa",
+  },
+  gapRowNow: { backgroundColor: "#eef6ee" },
+  gapRail: {
+    position: "absolute",
+    left: 0,
+    top: 0,
+    bottom: 0,
+    borderLeftWidth: 3,
+    borderLeftColor: "#d0d7de",
+    borderStyle: "dashed",
+  },
+  gapTitle: { fontSize: 13, fontWeight: "600", color: "#1f2328" },
+  gapSpan: {
+    fontSize: 11,
+    fontWeight: "600",
+    color: "#57606a",
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 999,
+    backgroundColor: "#eaeef2",
+    overflow: "hidden",
+  },
+  endRow: { paddingVertical: 10, paddingLeft: 14 },
+  endText: { fontSize: 12, color: "#656d76" },
   iconBtn: { padding: 6 },
 });
