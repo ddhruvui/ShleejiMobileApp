@@ -1,24 +1,18 @@
 import React, { useState, useEffect } from "react";
-import {
-  Modal,
-  View,
-  Text,
-  TouchableOpacity,
-  StyleSheet,
-  ScrollView,
-  Platform,
-} from "react-native";
+import { View, Text, Pressable, StyleSheet, Platform } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import DateTimePicker from "@react-native-community/datetimepicker";
+import {
+  Sheet,
+  SheetActions,
+  Button,
+  Checkbox,
+  Chip,
+  FieldLabel,
+} from "./ui";
+import { formatDateToISO, prettyDateKey } from "./EcdPicker";
 import { addDaysToDateKey, formatDateKey } from "../utils/ecd";
-
-// Format Date to YYYY-MM-DD (local time, matches EcdPicker)
-function formatDateToISO(date) {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
+import { colors, radii, spacing, type, HIT_TARGET } from "../theme";
 
 /** Quick date picks: today, tomorrow and the next Saturday that is not
  * already one of those two. Mirrors the web FE's ScheduleEventModal. */
@@ -37,6 +31,13 @@ function dateShortcuts() {
 /** "Mon, Nov 9, 2026" → "Nov 9" for the shortcut chips. */
 function shortDate(key) {
   return formatDateKey(key).replace(/, \d{4}$/, "").replace(/^\w+, /, "");
+}
+
+/** "YYYY-MM-DD" → local Date, parsed component-wise (never via the Date
+ * string parser, which can shift the day across timezones). */
+function dateKeyToDate(key) {
+  const [y, m, d] = key.split("-").map((n) => parseInt(n, 10));
+  return new Date(y, m - 1, d);
 }
 
 export default function ScheduleEventModal({
@@ -106,304 +107,189 @@ export default function ScheduleEventModal({
 
   function handleConfirm() {
     if (selected.size === 0) return;
+    // Selected tasks keep the template's order — the parent creates them
+    // one at a time in exactly this order.
     onConfirm({
       date,
       tasks: event.tasks.filter((_, i) => selected.has(i)),
     });
   }
 
+  const dateLabel = prettyDateKey(date) || "Select date";
+
   return (
-    <Modal
+    <Sheet
       visible={visible}
-      transparent
-      animationType="fade"
-      onRequestClose={onCancel}
+      onClose={onCancel}
+      title="Add to todo"
+      subtitle={event.name}
+      footer={
+        <SheetActions>
+          <Button
+            title="Cancel"
+            variant="secondary"
+            size="lg"
+            onPress={onCancel}
+            style={{ flex: 1 }}
+          />
+          <Button
+            title={`Add ${selected.size} task${selected.size === 1 ? "" : "s"}`}
+            size="lg"
+            onPress={handleConfirm}
+            disabled={selected.size === 0}
+            style={{ flex: 2 }}
+          />
+        </SheetActions>
+      }
     >
-      <TouchableOpacity
-        style={styles.overlay}
-        activeOpacity={1}
-        onPress={onCancel}
+      {/* Date */}
+      <FieldLabel>Date</FieldLabel>
+      <View style={styles.shortcutRow}>
+        {dateShortcuts().map((s) => (
+          <Chip
+            key={s.label}
+            size="sm"
+            label={`${s.label} · ${shortDate(s.key)}`}
+            accessibilityLabel={`${s.label}, ${shortDate(s.key)}`}
+            selected={s.key === date}
+            onPress={() => {
+              setDate(s.key);
+              setShowDatePicker(false);
+            }}
+            style={styles.shortcut}
+          />
+        ))}
+      </View>
+      <Pressable
+        onPress={() => setShowDatePicker(true)}
+        accessibilityRole="button"
+        accessibilityLabel={`Pick date, ${dateLabel}`}
+        style={({ pressed }) => [
+          styles.dateBtn,
+          pressed && styles.dateBtnPressed,
+        ]}
       >
-        <TouchableOpacity
-          activeOpacity={1}
-          onPress={(e) => e.stopPropagation()}
-        >
-          <View style={styles.modal}>
-            <Text style={styles.title}>
-              Add to todo <Text style={styles.titleEvent}>— {event.name}</Text>
-            </Text>
+        <Text style={styles.dateText}>{dateLabel}</Text>
+        <Ionicons name="calendar-outline" size={20} color={colors.primary} />
+      </Pressable>
+      {showDatePicker && (
+        <DateTimePicker
+          value={dateKeyToDate(date)}
+          mode="date"
+          display={Platform.OS === "ios" ? "spinner" : "default"}
+          onChange={onDateChange}
+        />
+      )}
 
-            {/* Date */}
-            <Text style={styles.label}>Date</Text>
-            <View style={styles.shortcutRow}>
-              {dateShortcuts().map((s) => {
-                const active = s.key === date;
-                return (
-                  <TouchableOpacity
-                    key={s.label}
-                    style={[styles.shortcut, active && styles.shortcutActive]}
-                    onPress={() => {
-                      setDate(s.key);
-                      setShowDatePicker(false);
-                    }}
-                    accessibilityRole="button"
-                    accessibilityState={{ selected: active }}
-                  >
-                    <Text
-                      style={[
-                        styles.shortcutText,
-                        active && styles.shortcutTextActive,
-                      ]}
-                    >
-                      {s.label}{" "}
-                      <Text
-                        style={[
-                          styles.shortcutDate,
-                          active && styles.shortcutTextActive,
-                        ]}
-                      >
-                        {shortDate(s.key)}
-                      </Text>
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-            <TouchableOpacity
-              style={styles.dateSelectorBtn}
-              onPress={() => setShowDatePicker(true)}
+      {/* Task checklist */}
+      <View style={styles.tasksHeader}>
+        <FieldLabel style={styles.tasksLabel}>Tasks</FieldLabel>
+        <Button
+          title={allSelected ? "Unselect all" : "Select all"}
+          variant="ghost"
+          onPress={toggleAll}
+          style={styles.toggleAll}
+        />
+      </View>
+      <View style={styles.taskList}>
+        {event.tasks.map((task, i) => {
+          const isChecked = selected.has(i);
+          return (
+            <View
+              key={i}
+              style={[styles.taskRow, i > 0 && styles.taskDivider]}
             >
-              <Text style={styles.dateSelectorText}>{date}</Text>
-              <Text style={styles.calendarIcon}>📅</Text>
-            </TouchableOpacity>
-            {showDatePicker && (
-              <DateTimePicker
-                value={new Date(date + "T00:00:00")}
-                mode="date"
-                display={Platform.OS === "ios" ? "spinner" : "default"}
-                onChange={onDateChange}
+              <Checkbox
+                checked={isChecked}
+                label={task}
+                onPress={() => toggleTask(i)}
               />
-            )}
-
-            {/* Task checklist */}
-            <View style={styles.tasksHeader}>
-              <Text style={styles.label}>Tasks</Text>
-              <TouchableOpacity style={styles.toggleAllBtn} onPress={toggleAll}>
-                <Text style={styles.toggleAllText}>
-                  {allSelected ? "Unselect all" : "Select all"}
-                </Text>
-              </TouchableOpacity>
-            </View>
-            <ScrollView style={styles.taskList}>
-              {event.tasks.map((task, i) => {
-                const isChecked = selected.has(i);
-                return (
-                  <TouchableOpacity
-                    key={i}
-                    style={styles.taskRow}
-                    onPress={() => toggleTask(i)}
-                    activeOpacity={0.7}
-                  >
-                    <Ionicons
-                      name={isChecked ? "checkbox" : "square-outline"}
-                      size={22}
-                      color={isChecked ? "#6200ee" : "#999"}
-                    />
-                    <Text
-                      style={[
-                        styles.taskName,
-                        !isChecked && styles.taskNameUnselected,
-                      ]}
-                    >
-                      {task}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
-
-            <View style={styles.actions}>
-              <TouchableOpacity style={styles.cancelBtn} onPress={onCancel}>
-                <Text style={styles.cancelText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[
-                  styles.confirmBtn,
-                  selected.size === 0 && styles.disabledBtn,
-                ]}
-                onPress={handleConfirm}
-                disabled={selected.size === 0}
+              {/* The name is a larger tap target for the same toggle; the
+                  checkbox already announces it to assistive tech. */}
+              <Pressable
+                onPress={() => toggleTask(i)}
+                style={styles.taskNameHit}
+                accessibilityElementsHidden
+                importantForAccessibility="no-hide-descendants"
               >
-                <Text style={styles.confirmText}>
-                  Add {selected.size} task{selected.size === 1 ? "" : "s"}
+                <Text
+                  style={[
+                    styles.taskName,
+                    !isChecked && styles.taskNameUnselected,
+                  ]}
+                >
+                  {task}
                 </Text>
-              </TouchableOpacity>
+              </Pressable>
             </View>
-          </View>
-        </TouchableOpacity>
-      </TouchableOpacity>
-    </Modal>
+          );
+        })}
+      </View>
+    </Sheet>
   );
 }
 
 const styles = StyleSheet.create({
-  overlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.5)",
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 24,
-  },
-  modal: {
-    backgroundColor: "#fff",
-    borderRadius: 12,
-    padding: 24,
-    width: 340,
-    maxWidth: "90%",
-    maxHeight: "85%",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
-    elevation: 8,
-  },
-  title: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: "#1f2328",
-    marginBottom: 16,
-  },
-  titleEvent: {
-    fontWeight: "400",
-    color: "#656d76",
-  },
-  label: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: "#656d76",
-    marginBottom: 8,
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
-  },
   shortcutRow: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: 6,
-    marginBottom: 10,
+    gap: spacing.sm - 2,
+    marginBottom: spacing.sm,
   },
   shortcut: {
-    borderWidth: 1,
-    borderColor: "#d0d7de",
-    borderRadius: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 7,
-    backgroundColor: "#ffffff",
+    minHeight: HIT_TARGET,
   },
-  shortcutActive: {
-    borderColor: "#1a7f37",
-    backgroundColor: "rgba(26, 127, 55, 0.12)",
-  },
-  shortcutText: {
-    fontSize: 13,
-    fontWeight: "500",
-    color: "#1f2328",
-  },
-  shortcutDate: {
-    fontWeight: "400",
-    color: "#656d76",
-  },
-  shortcutTextActive: {
-    color: "#1a7f37",
-  },
-  dateSelectorBtn: {
+  dateBtn: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    borderWidth: 1,
-    borderColor: "#d0d7de",
-    borderRadius: 8,
+    minHeight: 48,
+    borderRadius: radii.md,
     paddingHorizontal: 14,
-    paddingVertical: 12,
-    backgroundColor: "#fafafa",
-    marginBottom: 16,
+    backgroundColor: colors.surfaceMuted,
+    marginBottom: spacing.lg,
   },
-  dateSelectorText: {
-    fontSize: 15,
-    color: "#1f2328",
+  dateBtnPressed: {
+    backgroundColor: colors.surfaceSunken,
+  },
+  dateText: {
+    ...type.body,
     flex: 1,
-  },
-  calendarIcon: {
-    fontSize: 20,
-    marginLeft: 8,
   },
   tasksHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
   },
-  toggleAllBtn: {
-    paddingVertical: 4,
-    paddingHorizontal: 12,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: "#d0d7de",
-    backgroundColor: "#f6f8fa",
-    marginBottom: 8,
+  tasksLabel: {
+    marginBottom: 0,
   },
-  toggleAllText: {
-    fontSize: 12,
-    fontWeight: "500",
-    color: "#555",
+  toggleAll: {
+    paddingHorizontal: spacing.sm,
   },
   taskList: {
-    maxHeight: 260,
-    marginBottom: 16,
+    marginBottom: spacing.sm,
   },
   taskRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: "#eaeef2",
+    gap: spacing.xs,
+  },
+  taskDivider: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.divider,
+  },
+  taskNameHit: {
+    flex: 1,
+    minHeight: HIT_TARGET,
+    justifyContent: "center",
   },
   taskName: {
-    fontSize: 15,
-    color: "#1f2328",
-    flex: 1,
+    ...type.callout,
+    fontWeight: "400",
   },
   taskNameUnselected: {
-    color: "#999",
+    color: colors.textTertiary,
     textDecorationLine: "line-through",
-  },
-  actions: {
-    flexDirection: "row",
-    justifyContent: "flex-end",
-    gap: 10,
-  },
-  cancelBtn: {
-    paddingVertical: 10,
-    paddingHorizontal: 18,
-    borderRadius: 8,
-    backgroundColor: "#f0f0f0",
-  },
-  cancelText: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#555",
-  },
-  confirmBtn: {
-    paddingVertical: 10,
-    paddingHorizontal: 18,
-    borderRadius: 8,
-    backgroundColor: "#1a7f37",
-  },
-  disabledBtn: {
-    opacity: 0.5,
-  },
-  confirmText: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#fff",
   },
 });

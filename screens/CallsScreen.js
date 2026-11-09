@@ -1,18 +1,24 @@
 import React, { useState, useEffect, useCallback } from "react";
-import {
-  StyleSheet,
-  View,
-  Text,
-  TouchableOpacity,
-  ScrollView,
-  ActivityIndicator,
-  RefreshControl,
-} from "react-native";
-import { Ionicons } from "@expo/vector-icons";
+import { StyleSheet, View, Text, Pressable, ScrollView, RefreshControl } from "react-native";
 import * as callsApi from "../api/calls";
 import AddButton from "../components/AddButton";
 import CallModal from "../components/CallModal";
 import ConfirmModal from "../components/ConfirmModal";
+import {
+  ActionSheet,
+  Avatar,
+  Banner,
+  Card,
+  Checkbox,
+  EmptyState,
+  ErrorState,
+  IconButton,
+  ProgressBar,
+  ScreenHeader,
+  SectionHeader,
+  SkeletonList,
+} from "../components/ui";
+import { colors, spacing, type, useBottomClearance } from "../theme";
 
 const SECTIONS = [
   { frequency: "biweekly", title: "Biweekly" },
@@ -25,10 +31,12 @@ export default function CallsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
   const [actionError, setActionError] = useState(null);
+  const bottomClearance = useBottomClearance();
 
   // null = closed, { mode: "add" } or { mode: "edit", call }
   const [modalState, setModalState] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
+  const [menuTarget, setMenuTarget] = useState(null);
 
   /* ── Load all calls ── */
   const loadAll = useCallback(async () => {
@@ -96,108 +104,115 @@ export default function CallsScreen() {
     }
   };
 
+  const openAdd = () => setModalState({ mode: "add" });
+
   /* ── Render ── */
 
-  const renderCallRow = (call) => (
-    <View key={call._id} style={[styles.row, call.done && styles.rowDone]}>
-      <TouchableOpacity
-        style={[styles.checkbox, call.done && styles.checkboxChecked]}
+  const renderCallRow = (call, idx) => (
+    // Checkbox, name and "⋯" are siblings so each is its own screen-reader stop.
+    <View key={call._id} style={[styles.row, idx > 0 && styles.rowDivider]}>
+      <Checkbox
+        checked={call.done}
+        tone="success"
+        label={call.done ? `Mark ${call.name} not called` : `Mark ${call.name} called`}
         onPress={() => handleToggleCalled(call)}
+      />
+      <Pressable
+        onPress={() => setModalState({ mode: "edit", call })}
+        onLongPress={() => setMenuTarget(call)}
+        accessibilityRole="button"
+        accessibilityLabel={`${call.name}${call.done ? ", called" : ""}`}
+        accessibilityHint="Opens the call to edit. Long press for more actions."
+        style={({ pressed }) => [styles.rowBody, pressed && styles.rowPressed]}
       >
-        {call.done && <Ionicons name="checkmark" size={14} color="#fff" />}
-      </TouchableOpacity>
-
-      <Text
-        style={[styles.name, call.done && styles.nameDone]}
-        numberOfLines={2}
-      >
-        {call.name}
-      </Text>
-
-      <View style={styles.actions}>
-        <TouchableOpacity
-          style={styles.actionBtn}
-          onPress={() => setModalState({ mode: "edit", call })}
-        >
-          <Ionicons name="pencil" size={16} color="#656d76" />
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.actionBtn}
-          onPress={() => setDeleteTarget(call)}
-        >
-          <Ionicons name="trash-outline" size={16} color="#e74c3c" />
-        </TouchableOpacity>
-      </View>
+        <Avatar name={call.name} size={34} />
+        <Text style={[styles.name, call.done && styles.nameDone]} numberOfLines={2}>
+          {call.name}
+        </Text>
+      </Pressable>
+      <IconButton
+        icon="ellipsis-horizontal"
+        label={`More actions for ${call.name}`}
+        size="sm"
+        onPress={() => setMenuTarget(call)}
+      />
     </View>
   );
 
   const renderBody = () => {
     if (loading) {
       return (
-        <View style={styles.centered}>
-          <ActivityIndicator size="large" color="#1e88e5" />
-          <Text style={styles.loadingText}>Loading…</Text>
+        <View style={styles.padded}>
+          <SkeletonList groups={2} rows={2} />
         </View>
       );
     }
 
     if (error) {
-      return (
-        <View style={styles.centered}>
-          <Ionicons name="alert-circle-outline" size={48} color="#e74c3c" />
-          <Text style={styles.errorTextLarge}>Failed to load: {error}</Text>
-          <Text style={styles.errorHint}>Is the backend running?</Text>
-          <TouchableOpacity style={styles.retryBtn} onPress={loadAll}>
-            <Text style={styles.retryText}>Retry</Text>
-          </TouchableOpacity>
-        </View>
-      );
+      return <ErrorState message={error} onRetry={loadAll} />;
     }
 
     if (calls.length === 0 && !actionError) {
       return (
-        <View style={styles.emptyWrap}>
-          <View style={styles.centered}>
-            <Ionicons name="call-outline" size={80} color="#ccc" />
-            <Text style={styles.emptyText}>No calls yet</Text>
-            <Text style={styles.emptySubtext}>
-              Tap the + button to add someone to ring biweekly or monthly
-            </Text>
-          </View>
-        </View>
+        <EmptyState
+          icon="call-outline"
+          title="No calls yet"
+          message="Add someone to ring biweekly or monthly."
+          actionLabel="Add a call"
+          onAction={openAdd}
+          style={{ paddingBottom: bottomClearance }}
+        />
       );
     }
 
     return (
       <ScrollView
-        contentContainerStyle={styles.listContent}
+        contentContainerStyle={[styles.listContent, { paddingBottom: bottomClearance }]}
         showsVerticalScrollIndicator={false}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={colors.primary}
+            colors={[colors.primary]}
+          />
         }
       >
         {actionError && (
-          <View style={styles.actionErrorBar}>
-            <Text style={styles.actionErrorText}>
-              Action failed: {actionError}
-            </Text>
-            <TouchableOpacity onPress={() => setActionError(null)}>
-              <Ionicons name="close" size={18} color="#e74c3c" />
-            </TouchableOpacity>
-          </View>
+          <Banner tone="danger" icon="alert" onDismiss={() => setActionError(null)}>
+            {`Action failed: ${actionError}`}
+          </Banner>
         )}
 
         {SECTIONS.map(({ frequency, title }) => {
           const sectionCalls = calls.filter((c) => c.frequency === frequency);
+          const called = sectionCalls.filter((c) => c.done).length;
           return (
             <View key={frequency} style={styles.section}>
-              <Text style={styles.sectionTitle}>{title}</Text>
+              <SectionHeader
+                title={title}
+                right={
+                  sectionCalls.length > 0 ? (
+                    <Text style={styles.sectionCount}>
+                      {called} / {sectionCalls.length}
+                    </Text>
+                  ) : null
+                }
+              />
               {sectionCalls.length === 0 ? (
                 <Text style={styles.sectionEmpty}>No one yet</Text>
               ) : (
-                <View style={styles.sectionCard}>
-                  {sectionCalls.map(renderCallRow)}
-                </View>
+                <>
+                  <ProgressBar
+                    value={called / sectionCalls.length}
+                    tone={called === sectionCalls.length ? "success" : "primary"}
+                    height={5}
+                    style={styles.progress}
+                  />
+                  <Card padded={false} style={styles.sectionCard}>
+                    {sectionCalls.map(renderCallRow)}
+                  </Card>
+                </>
               )}
             </View>
           );
@@ -206,17 +221,45 @@ export default function CallsScreen() {
     );
   };
 
+  const calledCount = calls.filter((c) => c.done).length;
+
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.title}>Calls</Text>
-        <AddButton
-          label="Add call"
-          onPress={() => setModalState({ mode: "add" })}
-        />
-      </View>
+      <ScreenHeader
+        title="Calls"
+        subtitle={
+          !loading && !error && calls.length > 0
+            ? `${calledCount} of ${calls.length} called`
+            : undefined
+        }
+        right={<AddButton label="Add call" onPress={openAdd} />}
+      />
 
       {renderBody()}
+
+      <ActionSheet
+        visible={menuTarget !== null}
+        title={menuTarget?.name}
+        subtitle={menuTarget?.frequency === "monthly" ? "Monthly" : "Biweekly"}
+        onClose={() => setMenuTarget(null)}
+        // These closures capture this render's menuTarget, so they still see
+        // the person after the menu has cleared it and finished closing.
+        actions={[
+          {
+            key: "edit",
+            label: "Edit call",
+            icon: "pencil",
+            onPress: () => setModalState({ mode: "edit", call: menuTarget }),
+          },
+          {
+            key: "delete",
+            label: "Delete call",
+            icon: "trash-outline",
+            destructive: true,
+            onPress: () => setDeleteTarget(menuTarget),
+          },
+        ]}
+      />
 
       <CallModal
         visible={modalState !== null}
@@ -238,168 +281,66 @@ export default function CallsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#f0f2f5",
+    backgroundColor: colors.bg,
   },
-  header: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingHorizontal: 24,
-    paddingTop: 54,
-    paddingBottom: 28,
-    backgroundColor: "#1e88e5",
-    elevation: 6,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-  },
-  title: {
-    fontSize: 32,
-    fontWeight: "800",
-    color: "#fff",
-  },
-  emptyWrap: {
-    flex: 1,
-    padding: 16,
-  },
-  centered: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    padding: 24,
-    paddingBottom: 100,
-  },
-  loadingText: {
-    marginTop: 12,
-    fontSize: 16,
-    color: "#656d76",
-  },
-  errorTextLarge: {
-    marginTop: 12,
-    fontSize: 16,
-    color: "#e74c3c",
-    textAlign: "center",
-  },
-  errorHint: {
-    marginTop: 4,
-    fontSize: 14,
-    color: "#999",
-  },
-  retryBtn: {
-    marginTop: 16,
-    paddingVertical: 10,
-    paddingHorizontal: 24,
-    borderRadius: 8,
-    backgroundColor: "#1e88e5",
-  },
-  retryText: {
-    fontSize: 15,
-    fontWeight: "600",
-    color: "#fff",
-  },
-  emptyText: {
-    fontSize: 22,
-    fontWeight: "600",
-    color: "#999",
-    marginTop: 20,
-  },
-  emptySubtext: {
-    fontSize: 16,
-    color: "#bbb",
-    marginTop: 8,
-    textAlign: "center",
+  padded: {
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.xs,
   },
   listContent: {
-    padding: 16,
-    paddingBottom: 120,
-  },
-  actionErrorBar: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    backgroundColor: "#fef2f2",
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: "#fde8e8",
-  },
-  actionErrorText: {
-    fontSize: 13,
-    color: "#e74c3c",
-    flex: 1,
-    marginRight: 8,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.xs,
   },
   section: {
-    marginBottom: 20,
+    marginBottom: spacing.xl,
   },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: "#1f2328",
-    marginBottom: 8,
-    paddingHorizontal: 4,
+  sectionCount: {
+    ...type.caption,
+    color: colors.textSecondary,
   },
   sectionEmpty: {
-    fontSize: 14,
-    color: "#999",
-    fontStyle: "italic",
-    paddingHorizontal: 4,
+    ...type.subhead,
+    color: colors.textTertiary,
+    paddingHorizontal: spacing.xs,
+  },
+  progress: {
+    marginHorizontal: spacing.xs,
+    marginBottom: spacing.md,
   },
   sectionCard: {
-    backgroundColor: "#fff",
-    borderRadius: 12,
     overflow: "hidden",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
   },
   row: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: 12,
-    paddingHorizontal: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: "#eaeef2",
-    backgroundColor: "#fff",
+    gap: spacing.xs,
+    paddingVertical: spacing.xs,
+    paddingRight: spacing.xs,
+    paddingLeft: spacing.xs,
+    backgroundColor: colors.surface,
   },
-  rowDone: {
-    opacity: 0.6,
+  rowDivider: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.divider,
   },
-  checkbox: {
-    width: 22,
-    height: 22,
-    borderRadius: 4,
-    borderWidth: 2,
-    borderColor: "#d0d7de",
-    justifyContent: "center",
+  rowBody: {
+    flex: 1,
+    flexDirection: "row",
     alignItems: "center",
-    marginRight: 10,
+    minHeight: 48,
+    borderRadius: 10,
+    paddingHorizontal: spacing.xs,
   },
-  checkboxChecked: {
-    backgroundColor: "#6200ee",
-    borderColor: "#6200ee",
+  rowPressed: {
+    backgroundColor: colors.surfaceMuted,
   },
   name: {
+    ...type.callout,
     flex: 1,
-    fontSize: 15,
-    fontWeight: "500",
-    color: "#1f2328",
-    marginRight: 8,
+    marginLeft: spacing.sm,
   },
   nameDone: {
     textDecorationLine: "line-through",
-    color: "#656d76",
-  },
-  actions: {
-    flexDirection: "row",
-    gap: 2,
-  },
-  actionBtn: {
-    padding: 6,
-    borderRadius: 6,
+    color: colors.textTertiary,
   },
 });

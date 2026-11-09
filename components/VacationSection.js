@@ -4,18 +4,23 @@ import React, {
   useCallback,
   useImperativeHandle,
 } from "react";
-import {
-  StyleSheet,
-  View,
-  Text,
-  TouchableOpacity,
-  ActivityIndicator,
-} from "react-native";
-import { Ionicons } from "@expo/vector-icons";
+import { StyleSheet, View, Text, Pressable } from "react-native";
 import * as vacationsApi from "../api/vacations";
 import * as tasksApi from "../api/tasks";
 import VacationModal from "./VacationModal";
 import ConfirmModal from "./ConfirmModal";
+import {
+  ActionSheet,
+  Badge,
+  Banner,
+  BannerText,
+  Button,
+  Card,
+  EmptyState,
+  IconButton,
+  LoadingState,
+} from "./ui";
+import { colors, radii, spacing, type } from "../theme";
 
 const SHORT_MONTHS = [
   "Jan",
@@ -60,6 +65,13 @@ function dayAfter(day) {
     .slice(0, 10);
 }
 
+/** Status badge per range: on now (info), upcoming (brand), past (neutral). */
+const STATUS = {
+  active: { label: "on now", tone: "info", icon: "sunny" },
+  upcoming: { label: "upcoming", tone: "primary", icon: "calendar-outline" },
+  past: { label: "past", tone: "neutral", icon: undefined },
+};
+
 /**
  * Vacation view: book time off, correct a trip after the fact, and re-date the
  * tasks that fall inside one.
@@ -79,6 +91,8 @@ export default function VacationSection({ onTasksChanged, addRef, onStatusChange
 
   const [modalState, setModalState] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
+  // The range whose "⋯" menu (edit / delete) is open.
+  const [menuFor, setMenuFor] = useState(null);
 
   const [openTasksFor, setOpenTasksFor] = useState(null);
   const [tasks, setTasks] = useState([]);
@@ -179,106 +193,135 @@ export default function VacationSection({ onTasksChanged, addRef, onStatusChange
   /* ── Render ── */
 
   if (loading) {
-    return (
-      <View style={styles.centered}>
-        <ActivityIndicator size="small" color="#1e88e5" />
-        <Text style={styles.loadingText}>Loading vacations…</Text>
-      </View>
-    );
+    return <LoadingState label="Loading vacations…" style={styles.loading} />;
   }
 
   const today = status?.today ?? "";
   const activeId = status?.active?._id ?? null;
 
+  const rangeLabel = (v) => `${formatDay(v.startDate)} → ${formatDay(v.endDate)}`;
+  const statusOf = (v) =>
+    v._id === activeId ? STATUS.active : v.endDate < today ? STATUS.past : STATUS.upcoming;
+
+  const menuActions = menuFor
+    ? [
+        {
+          key: "edit",
+          label: "Edit vacation",
+          icon: "pencil",
+          onPress: () => setModalState({ mode: "edit", vacation: menuFor }),
+        },
+        {
+          key: "delete",
+          label: "Delete vacation",
+          icon: "trash-outline",
+          destructive: true,
+          onPress: () => setDeleteTarget(menuFor),
+        },
+      ]
+    : [];
+
   return (
     <View>
       {error && (
-        <View style={styles.errorBar}>
-          <Text style={styles.errorText}>Action failed: {error}</Text>
-          <TouchableOpacity onPress={() => setError(null)}>
-            <Ionicons name="close" size={18} color="#e74c3c" />
-          </TouchableOpacity>
-        </View>
+        <Banner tone="danger" icon="alert" onDismiss={() => setError(null)}>
+          {`Action failed: ${error}`}
+        </Banner>
       )}
 
       {/* ── Status banner: the thing that stops a forgotten trip going unnoticed ── */}
       {status?.onVacation && status.active && (
-        <View style={[styles.banner, styles.bannerActive]}>
-          <Text style={styles.bannerText}>
-            <Text style={styles.bannerStrong}>You're on vacation.</Text> Day{" "}
+        <Banner tone="info" icon="sunny" testID="vacation-active-banner">
+          <BannerText>
+            <Text style={styles.strong}>You're on vacation.</Text> Day{" "}
             {status.active.dayOfVacation} of {status.active.totalDays}
             {status.active.note ? ` · ${status.active.note}` : ""} — back on{" "}
             {formatDay(dayAfter(status.active.endDate))}. Missed days aren't
             counted against you, and insight reports are paused until you're
             back.
-          </Text>
-        </View>
+          </BannerText>
+        </Banner>
       )}
       {!status?.onVacation && status?.justReturnedFrom && (
-        <View style={styles.banner}>
-          <Text style={styles.bannerText}>
-            <Text style={styles.bannerStrong}>Welcome back.</Text> You were away{" "}
+        <Banner tone="info" icon="home">
+          <BannerText>
+            <Text style={styles.strong}>Welcome back.</Text> You were away{" "}
             {status.justReturnedFrom.days} day
             {status.justReturnedFrom.days === 1 ? "" : "s"} — habit streaks
             start fresh from here, and your next report will have a restart
             plan.
-          </Text>
-        </View>
+          </BannerText>
+        </Banner>
       )}
 
       {vacations.length === 0 ? (
-        <Text style={styles.emptyText}>
-          No vacations yet — add one! Book the days you're away and anything you
-          don't get done then won't count as procrastination. Streaks pause
-          rather than break, and you can book a trip months ahead.
-        </Text>
+        <Card padded={false}>
+          <EmptyState
+            compact
+            icon="airplane-outline"
+            title="No vacations yet — add one!"
+            message="Book the days you're away and anything you don't get done then won't count as procrastination. Streaks pause rather than break, and you can book a trip months ahead."
+          />
+        </Card>
       ) : (
-        <View style={styles.list}>
-          {vacations.map((vacation) => {
-            const isActive = vacation._id === activeId;
-            const isPast = vacation.endDate < today;
+        <Card padded={false} style={styles.list}>
+          {vacations.map((vacation, index) => {
+            const st = statusOf(vacation);
+            const isPast = st === STATUS.past;
             const isOpen = openTasksFor === vacation._id;
             const days = lengthOf(vacation);
             return (
               <View
                 key={vacation._id}
-                style={[styles.row, isPast && styles.rowPast]}
+                style={[styles.rowWrap, index > 0 && styles.rowDivider]}
               >
-                <View style={styles.rowMain}>
-                  <View style={styles.rowHeader}>
-                    {isActive && <View style={styles.activeDot} />}
-                    <Text style={styles.rowDates}>
-                      {formatDay(vacation.startDate)} →{" "}
-                      {formatDay(vacation.endDate)}
-                    </Text>
-                  </View>
-                  <Text style={styles.rowMeta}>
-                    {days} day{days === 1 ? "" : "s"}
-                    {isActive ? " · on now" : isPast ? " · past" : " · upcoming"}
-                    {vacation.note ? ` · ${vacation.note}` : ""}
-                  </Text>
-                </View>
-
-                <TouchableOpacity
-                  style={styles.linkBtn}
-                  onPress={() => handleToggleTasks(vacation)}
-                >
-                  <Text style={styles.linkBtnText}>
-                    {isOpen ? "Hide" : "Tasks"}
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.iconBtn}
+                {/* Body, Tasks and "⋯" are siblings so each is its own
+                    screen-reader stop (no buttons nested in a button). */}
+                <View style={styles.row}>
+                <Pressable
+                  testID={`vacation-${vacation._id}`}
                   onPress={() => setModalState({ mode: "edit", vacation })}
+                  onLongPress={() => setMenuFor(vacation)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${rangeLabel(vacation)}, ${days} day${
+                    days === 1 ? "" : "s"
+                  }, ${st.label}${vacation.note ? `, ${vacation.note}` : ""}`}
+                  accessibilityHint="Edits the vacation. Long press for more actions."
+                  style={({ pressed }) => [styles.rowPress, pressed && styles.rowPressed]}
                 >
-                  <Ionicons name="pencil" size={16} color="#656d76" />
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.iconBtn}
-                  onPress={() => setDeleteTarget(vacation)}
-                >
-                  <Ionicons name="trash-outline" size={16} color="#e74c3c" />
-                </TouchableOpacity>
+                  <View style={[styles.rowMain, isPast && styles.past]}>
+                    <Text style={styles.rowDates}>{rangeLabel(vacation)}</Text>
+                    <View style={styles.metaRow}>
+                      <Badge label={st.label} tone={st.tone} icon={st.icon} />
+                      <Text style={styles.rowMeta}>
+                        {days} day{days === 1 ? "" : "s"}
+                      </Text>
+                    </View>
+                    {vacation.note ? (
+                      <Text style={styles.rowNote} numberOfLines={2}>
+                        {vacation.note}
+                      </Text>
+                    ) : null}
+                  </View>
+                </Pressable>
+
+                  <Button
+                    title={isOpen ? "Hide" : "Tasks"}
+                    variant="tonal"
+                    onPress={() => handleToggleTasks(vacation)}
+                    accessibilityLabel={
+                      isOpen
+                        ? `Hide tasks for ${rangeLabel(vacation)}`
+                        : `Tasks inside ${rangeLabel(vacation)}`
+                    }
+                    style={styles.tasksBtn}
+                  />
+                  <IconButton
+                    icon="ellipsis-horizontal"
+                    label={`More actions for vacation ${rangeLabel(vacation)}`}
+                    onPress={() => setMenuFor(vacation)}
+                  />
+                </View>
 
                 {isOpen && (
                   <View style={styles.tasksBox}>
@@ -302,14 +345,12 @@ export default function VacationSection({ onTasksChanged, addRef, onStatusChange
                                 : ""}
                             </Text>
                           </View>
-                          <TouchableOpacity
-                            style={styles.linkBtn}
+                          <Button
+                            title={`Move to ${formatDay(dayAfter(vacation.endDate))}`}
+                            variant="tonal"
+                            icon="arrow-forward"
                             onPress={() => handleRedate(task, vacation)}
-                          >
-                            <Text style={styles.linkBtnText}>
-                              Move to {formatDay(dayAfter(vacation.endDate))}
-                            </Text>
-                          </TouchableOpacity>
+                          />
                         </View>
                       ))
                     )}
@@ -318,8 +359,17 @@ export default function VacationSection({ onTasksChanged, addRef, onStatusChange
               </View>
             );
           })}
-        </View>
+        </Card>
       )}
+
+      <ActionSheet
+        visible={!!menuFor}
+        title={menuFor ? rangeLabel(menuFor) : undefined}
+        subtitle={menuFor?.note || undefined}
+        actions={menuActions}
+        onClose={() => setMenuFor(null)}
+        testID="vacation-menu"
+      />
 
       {modalState && (
         <VacationModal
@@ -329,110 +379,112 @@ export default function VacationSection({ onTasksChanged, addRef, onStatusChange
         />
       )}
 
-      {deleteTarget && (
-        <ConfirmModal
-          message={`Delete the vacation from ${formatDay(deleteTarget.startDate)} to ${formatDay(deleteTarget.endDate)}? Those days will count as ordinary days again.`}
-          onConfirm={handleDelete}
-          onCancel={() => setDeleteTarget(null)}
-        />
-      )}
+      <ConfirmModal
+        visible={!!deleteTarget}
+        message={
+          deleteTarget
+            ? `Delete the vacation from ${formatDay(deleteTarget.startDate)} to ${formatDay(deleteTarget.endDate)}? Those days will count as ordinary days again.`
+            : ""
+        }
+        onConfirm={handleDelete}
+        onCancel={() => setDeleteTarget(null)}
+      />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  centered: { alignItems: "center", paddingVertical: 32 },
-  loadingText: { marginTop: 8, fontSize: 14, color: "#656d76" },
-  errorBar: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    backgroundColor: "#fef2f2",
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: "#fde8e8",
+  loading: {
+    flex: 0,
+    paddingVertical: spacing.xxxl,
   },
-  errorText: { fontSize: 13, color: "#e74c3c", flex: 1, marginRight: 8 },
-  banner: {
-    backgroundColor: "#eef6fd",
-    borderWidth: 1,
-    borderColor: "#c5dcf5",
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 16,
-  },
-  bannerActive: { borderLeftWidth: 4, borderLeftColor: "#1e88e5" },
-  bannerText: { fontSize: 13, color: "#1f2328", lineHeight: 19 },
-  bannerStrong: { fontWeight: "700" },
-  emptyText: {
-    fontSize: 14,
-    color: "#656d76",
-    lineHeight: 20,
-    textAlign: "center",
-    paddingVertical: 24,
-    paddingHorizontal: 8,
+  strong: {
+    fontWeight: "700",
   },
   list: {
-    marginBottom: 24,
-    borderWidth: 1,
-    borderColor: "#eaeef2",
-    borderRadius: 10,
-    backgroundColor: "#fff",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
-    overflow: "hidden",
-    paddingHorizontal: 14,
+    marginBottom: spacing.xxl,
+  },
+  rowWrap: {
+    borderRadius: radii.lg,
+  },
+  rowDivider: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.divider,
   },
   row: {
     flexDirection: "row",
     alignItems: "center",
+    gap: spacing.xs,
+    minHeight: 64,
+    paddingVertical: spacing.sm + 2,
+    paddingLeft: spacing.lg,
+    paddingRight: spacing.xs,
+  },
+  rowPress: {
+    flex: 1,
+    borderRadius: 10,
+  },
+  rowPressed: {
+    backgroundColor: colors.surfaceMuted,
+  },
+  rowMain: {
+    flex: 1,
+    minWidth: 0,
+  },
+  past: {
+    opacity: 0.6,
+  },
+  rowDates: {
+    ...type.callout,
+    fontWeight: "600",
+  },
+  metaRow: {
+    flexDirection: "row",
+    alignItems: "center",
     flexWrap: "wrap",
-    gap: 8,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: "#eaeef2",
+    gap: spacing.sm - 2,
+    marginTop: spacing.xs + 2,
   },
-  rowPast: { opacity: 0.6 },
-  rowMain: { flex: 1, minWidth: 0 },
-  rowHeader: { flexDirection: "row", alignItems: "center", gap: 6 },
-  activeDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-    backgroundColor: "#1e88e5",
+  rowMeta: {
+    ...type.footnote,
   },
-  rowDates: { fontSize: 14, fontWeight: "600", color: "#1f2328" },
-  rowMeta: { fontSize: 12, color: "#656d76", marginTop: 2 },
-  linkBtn: {
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: "#c5dcf5",
+  rowNote: {
+    ...type.footnote,
+    color: colors.text,
+    marginTop: spacing.xs,
   },
-  linkBtnText: { fontSize: 12, color: "#1e88e5", fontWeight: "600" },
-  iconBtn: { padding: 6 },
+  tasksBtn: {
+    paddingHorizontal: spacing.md,
+  },
   tasksBox: {
-    width: "100%",
-    marginTop: 8,
-    padding: 10,
-    borderRadius: 8,
-    backgroundColor: "#f6f8fa",
-    gap: 10,
+    marginHorizontal: spacing.md,
+    marginBottom: spacing.md,
+    padding: spacing.md,
+    borderRadius: radii.md,
+    backgroundColor: colors.surfaceMuted,
+    gap: spacing.md,
   },
-  tasksEmpty: { fontSize: 12, color: "#656d76", lineHeight: 18 },
+  tasksEmpty: {
+    ...type.footnote,
+  },
   taskRow: {
     flexDirection: "row",
     alignItems: "center",
     flexWrap: "wrap",
-    gap: 8,
+    gap: spacing.sm,
   },
-  taskMain: { flex: 1, minWidth: 0 },
-  taskName: { fontSize: 13, fontWeight: "600", color: "#1f2328" },
-  taskMeta: { fontSize: 11, color: "#656d76", marginTop: 1 },
+  taskMain: {
+    flex: 1,
+    minWidth: 140,
+  },
+  taskName: {
+    ...type.subhead,
+    fontWeight: "600",
+    color: colors.text,
+  },
+  taskMeta: {
+    ...type.caption,
+    fontWeight: "400",
+    marginTop: spacing.xxs,
+  },
 });

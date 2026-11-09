@@ -1,17 +1,76 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Animated, Pressable, StyleSheet, Text, View } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import ConfirmModal from "../components/ConfirmModal";
 import {
-  Modal,
-  SafeAreaView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
-} from "react-native";
+  Button,
+  LoadingState,
+  ScreenHeader,
+  Sheet,
+  SheetActions,
+  TextField,
+} from "../components/ui";
+import { colors, radii, shadows, spacing, type, useBottomClearance } from "../theme";
 
 const STORAGE_KEY = "clickCount";
 const MADA_STORAGE_KEY = "madaCount";
+export const BEADS_PER_MADA = 108;
+
+/** Pure counting rule shared by tap and bulk add: every 108 clicks = 1 mada. */
+export function addClicks(clicks, mada, n) {
+  const total = clicks + n;
+  return { clicks: total % BEADS_PER_MADA, mada: mada + Math.floor(total / BEADS_PER_MADA) };
+}
+
+/**
+ * A mala: a larger guru bead at the top plus 108 beads around a circle, the
+ * first `filled` of them lit (clockwise from the guru bead). Plain Views — no
+ * SVG dependency.
+ */
+const SLOTS = BEADS_PER_MADA + 1; // slot 0 is the guru bead
+
+function BeadRing({ size, filled }) {
+  const beads = useMemo(() => {
+    const r = size / 2 - 8;
+    return Array.from({ length: SLOTS }, (_, i) => {
+      const a = -Math.PI / 2 + (i * 2 * Math.PI) / SLOTS;
+      const guru = i === 0;
+      const slot = (2 * Math.PI * r) / SLOTS;
+      const d = guru ? 14 : Math.max(4, Math.min(9, slot * 0.8));
+      return {
+        key: i,
+        d,
+        left: size / 2 + r * Math.cos(a) - d / 2,
+        top: size / 2 + r * Math.sin(a) - d / 2,
+      };
+    });
+  }, [size]);
+
+  return (
+    <View style={{ width: size, height: size }} pointerEvents="none">
+      {beads.map((b) => (
+        <View
+          key={b.key}
+          style={{
+            position: "absolute",
+            left: b.left,
+            top: b.top,
+            width: b.d,
+            height: b.d,
+            borderRadius: b.d / 2,
+            backgroundColor:
+              b.key === 0
+                ? colors.accentText
+                : b.key <= filled
+                  ? colors.accent
+                  : colors.borderStrong,
+          }}
+        />
+      ))}
+    </View>
+  );
+}
 
 export default function CounterScreen() {
   const [clicks, setClicks] = useState(0);
@@ -20,6 +79,9 @@ export default function CounterScreen() {
   const [addModalVisible, setAddModalVisible] = useState(false);
   const [addInput, setAddInput] = useState("");
   const [isLoaded, setIsLoaded] = useState(false);
+  const [padSize, setPadSize] = useState({ width: 0, height: 0 });
+  const pulse = useRef(new Animated.Value(1)).current;
+  const bottomClearance = useBottomClearance(spacing.md);
 
   // Load saved click count and mada count on mount
   useEffect(() => {
@@ -63,13 +125,20 @@ export default function CounterScreen() {
   const handleTap = useCallback(() => {
     setClicks((prev) => {
       const next = prev + 1;
-      if (next >= 108) {
+      if (next >= BEADS_PER_MADA) {
         setMada((m) => m + 1);
         return 0;
       }
       return next;
     });
-  }, []);
+    pulse.setValue(1.07);
+    Animated.spring(pulse, {
+      toValue: 1,
+      friction: 5,
+      tension: 220,
+      useNativeDriver: true,
+    }).start();
+  }, [pulse]);
 
   const handleAddPress = useCallback(() => {
     setAddInput("");
@@ -84,8 +153,8 @@ export default function CounterScreen() {
     }
     setClicks((prevClicks) => {
       const totalClicks = prevClicks + num;
-      const extraMada = Math.floor(totalClicks / 108);
-      const remainingClicks = totalClicks % 108;
+      const extraMada = Math.floor(totalClicks / BEADS_PER_MADA);
+      const remainingClicks = totalClicks % BEADS_PER_MADA;
       if (extraMada > 0) {
         setMada((m) => m + extraMada);
       }
@@ -114,132 +183,115 @@ export default function CounterScreen() {
 
   if (!isLoaded) {
     return (
-      <View style={[styles.container, styles.centered]}>
-        <Text style={{ fontSize: 18, color: "#888" }}>Loading…</Text>
+      <View style={styles.container}>
+        <LoadingState />
       </View>
     );
   }
 
-  return (
-    <SafeAreaView style={styles.container}>
-      {/* ─── Header: count + reset ─── */}
-      <View style={styles.header}>
-        <View style={styles.countersRow}>
-          <View style={styles.countWrapper}>
-            <Text style={styles.label}>CLICKS</Text>
-            <Text style={styles.count}>{clicks}</Text>
-          </View>
-          <View style={styles.countWrapper}>
-            <Text style={styles.label}>MADA</Text>
-            <Text style={styles.count}>{mada}</Text>
-          </View>
-        </View>
+  const ringSize = Math.max(
+    180,
+    Math.min(padSize.width - spacing.xxl * 2, padSize.height - 150, 340),
+  );
+  const parsedAdd = parseInt(addInput, 10);
+  const addPreview =
+    !isNaN(parsedAdd) && parsedAdd > 0 ? addClicks(clicks, mada, parsedAdd) : null;
 
-        <View style={styles.headerButtons}>
-          <TouchableOpacity
-            style={styles.resetBtn}
-            onPress={handleResetPress}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.resetBtnText}>Reset</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.addBtn}
-            onPress={handleAddPress}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.addBtnText}>+ Add</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
+  return (
+    <View style={styles.container}>
+      {/* Reset and "+ Add" stay labelled (not an icon-only "+"): a bare plus
+          beside a tap-to-count pad would read as "increment by one". */}
+      <ScreenHeader
+        title="Counter"
+        right={
+          <>
+            <Button title="Reset" variant="ghost" size="sm" onPress={handleResetPress} />
+            <Button title="Add" icon="add" variant="tonal" size="sm" onPress={handleAddPress} />
+          </>
+        }
+      />
 
       {/* ─── Trackpad: tap anywhere to increment ─── */}
-      <TouchableOpacity
-        style={styles.trackpad}
+      <Pressable
+        testID="counter-trackpad"
+        style={({ pressed }) => [
+          styles.trackpad,
+          { marginBottom: bottomClearance },
+          pressed && styles.trackpadPressed,
+        ]}
         onPress={handleTap}
-        activeOpacity={0.85}
+        onLayout={(e) => setPadSize(e.nativeEvent.layout)}
+        accessibilityRole="button"
+        accessibilityLabel={`Count. ${clicks} of ${BEADS_PER_MADA} clicks, ${mada} mada`}
+        accessibilityHint="Tap to add one"
       >
-        <Text style={styles.trackpadHint}>Tap anywhere to count</Text>
-      </TouchableOpacity>
+        {padSize.width > 0 ? (
+          <View style={styles.ringWrap}>
+            <BeadRing size={ringSize} filled={clicks} />
+            <Animated.View style={[styles.center, { transform: [{ scale: pulse }] }]}>
+              <Text style={styles.label}>CLICKS</Text>
+              <Text style={styles.count} testID="clicks-count">
+                {clicks}
+              </Text>
+              <Text style={styles.of}>of {BEADS_PER_MADA}</Text>
+            </Animated.View>
+          </View>
+        ) : null}
 
-      {/* ─── Reset confirmation modal ─── */}
-      <Modal
-        animationType="fade"
-        transparent
+        <View style={styles.madaPill}>
+          <Text style={styles.madaLabel}>MADA</Text>
+          <Text style={styles.madaCount} testID="mada-count">
+            {mada}
+          </Text>
+        </View>
+
+        <View style={styles.hintRow}>
+          <Ionicons name="finger-print-outline" size={16} color={colors.textTertiary} />
+          <Text style={styles.trackpadHint}>Tap anywhere to count</Text>
+        </View>
+      </Pressable>
+
+      {/* ─── Reset confirmation ─── */}
+      <ConfirmModal
         visible={modalVisible}
-        onRequestClose={handleCancelReset}
-      >
-        <View style={styles.overlay}>
-          <View style={styles.modal}>
-            <Text style={styles.modalTitle}>Reset Counter?</Text>
-            <Text style={styles.modalBody}>
-              This will reset both your click and mada counts to 0. Are you
-              sure?
-            </Text>
+        title="Reset Counter?"
+        message="This will reset both your click and mada counts to 0. Are you sure?"
+        confirmLabel="Confirm"
+        icon="refresh"
+        onConfirm={handleConfirmReset}
+        onCancel={handleCancelReset}
+      />
 
-            <View style={styles.modalActions}>
-              <TouchableOpacity
-                style={[styles.modalBtn, styles.cancelBtn]}
-                onPress={handleCancelReset}
-              >
-                <Text style={styles.cancelBtnText}>Cancel</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[styles.modalBtn, styles.confirmBtn]}
-                onPress={handleConfirmReset}
-              >
-                <Text style={styles.confirmBtnText}>Confirm</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
-
-      {/* ─── Add number modal ─── */}
-      <Modal
-        animationType="fade"
-        transparent
+      {/* ─── Add number sheet ─── */}
+      <Sheet
         visible={addModalVisible}
-        onRequestClose={handleCancelAdd}
+        onClose={handleCancelAdd}
+        title="Add Count"
+        subtitle="Enter a number to add. Every 108 will count as 1 mada."
+        footer={
+          <SheetActions>
+            <Button title="Cancel" variant="secondary" size="lg" onPress={handleCancelAdd} style={{ flex: 1 }} />
+            <Button title="Add" size="lg" onPress={handleConfirmAdd} style={{ flex: 2 }} />
+          </SheetActions>
+        }
       >
-        <View style={styles.overlay}>
-          <View style={styles.modal}>
-            <Text style={styles.modalTitle}>Add Count</Text>
-            <Text style={styles.modalBody}>
-              Enter a number to add. Every 108 will count as 1 mada.
-            </Text>
-            <TextInput
-              style={styles.addInput}
-              keyboardType="number-pad"
-              placeholder="e.g. 217"
-              placeholderTextColor="#aaa"
-              value={addInput}
-              onChangeText={setAddInput}
-              autoFocus
-            />
-            <View style={styles.modalActions}>
-              <TouchableOpacity
-                style={[styles.modalBtn, styles.cancelBtn]}
-                onPress={handleCancelAdd}
-              >
-                <Text style={styles.cancelBtnText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[
-                  styles.modalBtn,
-                  styles.confirmBtn,
-                  { backgroundColor: "#1e88e5" },
-                ]}
-                onPress={handleConfirmAdd}
-              >
-                <Text style={styles.confirmBtnText}>Add</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
-    </SafeAreaView>
+        <TextField
+          label="Clicks to add"
+          keyboardType="number-pad"
+          placeholder="e.g. 217"
+          value={addInput}
+          onChangeText={setAddInput}
+          onSubmitEditing={handleConfirmAdd}
+          autoFocus
+          inputStyle={styles.addInput}
+          helper={
+            addPreview
+              ? `You'll have ${addPreview.mada} mada and ${addPreview.clicks} clicks`
+              : undefined
+          }
+        />
+      </Sheet>
+    </View>
   );
 }
 
@@ -247,167 +299,80 @@ export default function CounterScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#f0f2f5",
+    backgroundColor: colors.bg,
   },
-  centered: {
-    justifyContent: "center",
-    alignItems: "center",
-  },
-
-  /* Header */
-  header: {
-    backgroundColor: "#1e88e5",
-    paddingTop: 54,
-    paddingBottom: 28,
-    paddingHorizontal: 24,
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    elevation: 6,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-  },
-  countersRow: {
-    flexDirection: "row",
-    gap: 32,
-    flexShrink: 1,
-  },
-  countWrapper: {
-    flexShrink: 1,
-  },
-  label: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: "rgba(255,255,255,0.8)",
-    letterSpacing: 1.5,
-    marginBottom: 4,
-  },
-  count: {
-    fontSize: 56,
-    fontWeight: "800",
-    color: "#fff",
-  },
-  resetBtn: {
-    backgroundColor: "#fff",
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    borderRadius: 8,
-  },
-  resetBtnText: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: "#1e88e5",
-  },
-
-  /* Header buttons */
-  headerButtons: {
-    gap: 10,
-    alignItems: "stretch",
-  },
-  addBtn: {
-    backgroundColor: "#fff",
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    borderRadius: 8,
-    alignItems: "center",
-  },
-  addBtnText: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: "#1e88e5",
-  },
-  addInput: {
-    width: "100%",
-    borderWidth: 1,
-    borderColor: "#ccc",
-    borderRadius: 10,
-    padding: 14,
-    fontSize: 18,
-    color: "#222",
-    marginBottom: 20,
-    textAlign: "center",
-  },
-
-  /* Trackpad */
   trackpad: {
     flex: 1,
-    margin: 16,
-    marginBottom: 120,
-    borderRadius: 16,
-    backgroundColor: "#fff",
-    borderWidth: 2,
-    borderColor: "#1e88e5",
-    borderStyle: "dashed",
-    justifyContent: "center",
+    marginHorizontal: spacing.lg,
+    marginTop: spacing.xs,
+    borderRadius: radii.xxl,
+    backgroundColor: colors.surface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
     alignItems: "center",
-    elevation: 2,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
+    justifyContent: "center",
+    ...shadows.card,
+  },
+  trackpadPressed: {
+    backgroundColor: colors.accentSoft,
+  },
+  ringWrap: {
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  center: {
+    position: "absolute",
+    alignItems: "center",
+  },
+  label: {
+    ...type.overline,
+  },
+  count: {
+    fontSize: 64,
+    lineHeight: 72,
+    fontWeight: "800",
+    letterSpacing: -1,
+    color: colors.text,
+    fontVariant: ["tabular-nums"],
+  },
+  of: {
+    ...type.footnote,
+    color: colors.textTertiary,
+  },
+  madaPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    marginTop: spacing.xl,
+    backgroundColor: colors.accentSoft,
+    borderRadius: radii.pill,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.lg + 2,
+  },
+  madaLabel: {
+    ...type.overline,
+    color: colors.accentText,
+  },
+  madaCount: {
+    fontSize: 22,
+    fontWeight: "800",
+    color: colors.accentText,
+    fontVariant: ["tabular-nums"],
+  },
+  hintRow: {
+    position: "absolute",
+    bottom: spacing.lg,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
   },
   trackpadHint: {
-    fontSize: 18,
-    color: "#aaa",
-    fontWeight: "500",
+    ...type.footnote,
+    color: colors.textTertiary,
   },
-
-  /* Modal */
-  overlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.5)",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  modal: {
-    width: "82%",
-    maxWidth: 360,
-    backgroundColor: "#fff",
-    borderRadius: 16,
-    padding: 28,
-    alignItems: "center",
-    elevation: 8,
-  },
-  modalTitle: {
+  addInput: {
     fontSize: 22,
-    fontWeight: "700",
-    color: "#222",
-    marginBottom: 12,
-  },
-  modalBody: {
-    fontSize: 15,
-    color: "#666",
     textAlign: "center",
-    lineHeight: 22,
-    marginBottom: 24,
-  },
-  modalActions: {
-    flexDirection: "row",
-    gap: 12,
-    width: "100%",
-  },
-  modalBtn: {
-    flex: 1,
-    paddingVertical: 14,
-    borderRadius: 10,
-    alignItems: "center",
-  },
-  cancelBtn: {
-    backgroundColor: "#e0e0e0",
-  },
-  cancelBtnText: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#333",
-  },
-  confirmBtn: {
-    backgroundColor: "#e53935",
-  },
-  confirmBtnText: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#fff",
+    minHeight: 56,
   },
 });

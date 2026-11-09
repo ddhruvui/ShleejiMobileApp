@@ -1,38 +1,40 @@
 import React from "react";
-import { StyleSheet, TouchableOpacity, Text } from "react-native";
+import { Pressable, StyleSheet } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import { colors, radii, shadows, HIT_TARGET } from "../theme";
 
-/* Shared icon-only "+" button used on every tab, mirroring the web FE's
-   readme-heading__add-btn look. It sits next to the title in the blue title
-   bar (Counter keeps it in its content toolbar beside Reset). Nothing shows
-   but the plus, so `label` is the accessible name only — "Add header". */
-export default function AddButton({ label, onPress }) {
+/* Shared icon-only "+" used on every tab. It sits in the screen header, beside
+   the large title — the one place each screen's "add" lives. Nothing shows but
+   the plus, so `label` is the accessible name only — "Add header". Filled with
+   the brand colour so it reads as the screen's primary action. */
+export default function AddButton({ label, onPress, testID }) {
   return (
-    <TouchableOpacity
-      style={styles.btn}
+    <Pressable
+      testID={testID}
+      style={({ pressed }) => [styles.btn, pressed && styles.pressed]}
       onPress={onPress}
-      activeOpacity={0.7}
       accessibilityRole="button"
       accessibilityLabel={label}
     >
-      <Text style={styles.text}>+</Text>
-    </TouchableOpacity>
+      <Ionicons name="add" size={26} color={colors.onPrimary} />
+    </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
   btn: {
-    width: 40,
-    height: 40,
+    width: HIT_TARGET,
+    height: HIT_TARGET,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#fff",
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: "#d0d7de",
+    backgroundColor: colors.primary,
+    borderRadius: radii.md + 2,
+    ...shadows.card,
+    shadowColor: colors.primary,
+    shadowOpacity: 0.3,
   },
-  text: {
-    fontSize: 26,
-    fontWeight: "600",
-    color: "#1e88e5",
+  pressed: {
+    backgroundColor: colors.primaryPressed,
+    transform: [{ scale: 0.96 }],
   },
 });

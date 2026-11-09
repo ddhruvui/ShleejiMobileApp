@@ -1,5 +1,8 @@
 import React, { useState, useEffect } from "react";
-import { Modal, View, Text, TouchableOpacity, StyleSheet } from "react-native";
+import { View, Text, Pressable, StyleSheet } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import { Sheet, SheetActions, Button, Chip, FieldLabel } from "./ui";
+import { colors, spacing, type, HIT_TARGET } from "../theme";
 import { WEEK_DAYS } from "../utils/goalSync";
 
 /** Picker order — Mon-first, matching the todo's weekly ECD strip. */
@@ -10,6 +13,16 @@ const PRESETS = [
   { label: "Weekdays", days: ["Mon", "Tue", "Wed", "Thu", "Fri"] },
   { label: "Weekends", days: ["Sat", "Sun"] },
 ];
+
+/** Round day buttons, as in EcdPicker's weekly mode; slop tops them up to 44pt. */
+const DAY_SIZE = 40;
+const DAY_SLOP_EDGE = (HIT_TARGET - DAY_SIZE) / 2;
+const DAY_SLOP = {
+  top: DAY_SLOP_EDGE,
+  bottom: DAY_SLOP_EDGE,
+  left: DAY_SLOP_EDGE,
+  right: DAY_SLOP_EDGE,
+};
 
 /**
  * Choose which weekdays an under-progress step runs on (mirrors the web FE's
@@ -45,197 +58,136 @@ export default function StepDaysModal({
       prev.includes(day) ? prev.filter((d) => d !== day) : [...prev, day],
     );
 
+  // A preset reads as chosen when the picked days are exactly its days.
+  const matchesPreset = (preset) =>
+    preset.days.length === selected.length &&
+    preset.days.every((d) => selected.includes(d));
+
   return (
-    <Modal
+    <Sheet
       visible={visible}
-      transparent
-      animationType="fade"
-      onRequestClose={onCancel}
+      onClose={onCancel}
+      title={mode === "start" ? "Start step" : "Change days"}
+      subtitle={stepName || undefined}
+      footer={
+        <SheetActions>
+          <Button
+            title="Cancel"
+            variant="secondary"
+            size="lg"
+            onPress={onCancel}
+            style={{ flex: 1 }}
+          />
+          <Button
+            title={mode === "start" ? "Start step" : "Save days"}
+            size="lg"
+            onPress={() => onConfirm(selected)}
+            disabled={selected.length === 0}
+            loading={!!busy}
+            style={{ flex: 2 }}
+          />
+        </SheetActions>
+      }
     >
-      <TouchableOpacity
-        style={styles.overlay}
-        activeOpacity={1}
-        onPress={onCancel}
-      >
-        <TouchableOpacity activeOpacity={1} onPress={(e) => e.stopPropagation()}>
-          <View style={styles.modal}>
-            <Text style={styles.title}>
-              {mode === "start" ? "Start step" : "Change days"}
-            </Text>
-            {stepName ? (
-              <Text style={styles.subtitle} numberOfLines={1}>
-                {stepName}
+      <FieldLabel>Days</FieldLabel>
+      <View style={styles.dowRow}>
+        {PICKER_ORDER.map((day) => {
+          const on = days.includes(day);
+          return (
+            <Pressable
+              key={day}
+              onPress={() => toggle(day)}
+              hitSlop={DAY_SLOP}
+              accessibilityRole="button"
+              accessibilityLabel={day}
+              accessibilityState={{ selected: on }}
+              style={({ pressed }) => [
+                styles.dayBtn,
+                pressed && !on && styles.dayBtnPressed,
+                on && styles.dayBtnOn,
+              ]}
+            >
+              <Text style={[styles.dayText, on && styles.dayTextOn]}>
+                {day.slice(0, 2)}
               </Text>
-            ) : null}
+            </Pressable>
+          );
+        })}
+      </View>
 
-            <View style={styles.dowRow}>
-              {PICKER_ORDER.map((day) => {
-                const on = days.includes(day);
-                return (
-                  <TouchableOpacity
-                    key={day}
-                    style={[styles.dowBtn, on && styles.dowBtnActive]}
-                    onPress={() => toggle(day)}
-                  >
-                    <Text style={[styles.dowText, on && styles.dowTextActive]}>
-                      {day}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
+      <View style={styles.presetRow}>
+        {PRESETS.map((preset) => (
+          <Chip
+            key={preset.label}
+            size="sm"
+            label={preset.label}
+            selected={matchesPreset(preset)}
+            onPress={() => setDays([...preset.days])}
+          />
+        ))}
+      </View>
 
-            <View style={styles.presetRow}>
-              {PRESETS.map((preset) => (
-                <TouchableOpacity
-                  key={preset.label}
-                  style={styles.presetBtn}
-                  onPress={() => setDays([...preset.days])}
-                >
-                  <Text style={styles.presetText}>{preset.label}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-
-            <Text style={styles.hint}>
-              {selected.length === 0
-                ? "Pick at least one day — a habit needs a day to run on."
-                : `Due every ${selected.join(", ")}${goalName ? ` under "${goalName}"` : ""}. The streak counts only these days.`}
-            </Text>
-
-            <View style={styles.actions}>
-              <TouchableOpacity style={styles.cancelBtn} onPress={onCancel}>
-                <Text style={styles.cancelText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[
-                  styles.confirmBtn,
-                  (busy || selected.length === 0) && styles.disabledBtn,
-                ]}
-                onPress={() => onConfirm(selected)}
-                disabled={busy || selected.length === 0}
-              >
-                <Text style={styles.confirmText}>
-                  {mode === "start" ? "Start step" : "Save days"}
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </TouchableOpacity>
-      </TouchableOpacity>
-    </Modal>
+      <View style={styles.hintRow}>
+        <Ionicons
+          name={selected.length === 0 ? "alert-circle-outline" : "repeat"}
+          size={14}
+          color={selected.length === 0 ? colors.warningText : colors.textSecondary}
+        />
+        <Text style={[styles.hint, selected.length === 0 && styles.hintWarn]}>
+          {selected.length === 0
+            ? "Pick at least one day — a habit needs a day to run on."
+            : `Due every ${selected.join(", ")}${goalName ? ` under "${goalName}"` : ""}. The streak counts only these days.`}
+        </Text>
+      </View>
+    </Sheet>
   );
 }
 
 const styles = StyleSheet.create({
-  overlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.5)",
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 24,
-  },
-  modal: {
-    backgroundColor: "#fff",
-    borderRadius: 12,
-    padding: 24,
-    width: 340,
-    maxWidth: "90%",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
-    elevation: 8,
-  },
-  title: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: "#1f2328",
-  },
-  subtitle: {
-    fontSize: 13,
-    color: "#656d76",
-    marginTop: 2,
-    marginBottom: 16,
-  },
   dowRow: {
     flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 6,
+    justifyContent: "space-between",
+    marginBottom: spacing.md,
   },
-  dowBtn: {
-    width: 42,
-    height: 34,
+  dayBtn: {
+    width: DAY_SIZE,
+    height: DAY_SIZE,
+    borderRadius: DAY_SIZE / 2,
+    backgroundColor: colors.surfaceMuted,
     alignItems: "center",
     justifyContent: "center",
-    borderWidth: 1,
-    borderColor: "#d0d7de",
-    borderRadius: 8,
   },
-  dowBtnActive: {
-    backgroundColor: "#6200ee",
-    borderColor: "#6200ee",
+  dayBtnPressed: {
+    backgroundColor: colors.surfaceSunken,
   },
-  dowText: {
-    fontSize: 12,
-    fontWeight: "500",
-    color: "#656d76",
+  dayBtnOn: {
+    backgroundColor: colors.primary,
   },
-  dowTextActive: {
-    color: "#fff",
+  dayText: {
+    ...type.subhead,
+    fontWeight: "600",
+    color: colors.textSecondary,
+  },
+  dayTextOn: {
+    color: colors.onPrimary,
   },
   presetRow: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: 6,
-    marginTop: 10,
+    gap: spacing.sm - 2,
+    marginBottom: spacing.md,
   },
-  presetBtn: {
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    borderWidth: 1,
-    borderColor: "#d0d7de",
-    borderRadius: 8,
-  },
-  presetText: {
-    fontSize: 12,
-    fontWeight: "500",
-    color: "#656d76",
+  hintRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: spacing.xs + 2,
+    marginBottom: spacing.sm,
   },
   hint: {
-    fontSize: 12,
-    color: "#656d76",
-    marginTop: 12,
-    marginBottom: 20,
+    ...type.footnote,
+    flex: 1,
   },
-  actions: {
-    flexDirection: "row",
-    justifyContent: "flex-end",
-    gap: 10,
-  },
-  cancelBtn: {
-    paddingVertical: 10,
-    paddingHorizontal: 18,
-    borderRadius: 8,
-    backgroundColor: "#f0f0f0",
-  },
-  cancelText: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#555",
-  },
-  confirmBtn: {
-    paddingVertical: 10,
-    paddingHorizontal: 18,
-    borderRadius: 8,
-    backgroundColor: "#6200ee",
-  },
-  disabledBtn: {
-    opacity: 0.5,
-  },
-  confirmText: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#fff",
+  hintWarn: {
+    color: colors.warningText,
   },
 });

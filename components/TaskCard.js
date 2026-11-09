@@ -1,8 +1,10 @@
 import React, { useState } from "react";
-import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
+import { View, Text, Pressable, StyleSheet } from "react-native";
 import EditTaskModal from "./EditTaskModal";
+import { ActionSheet, Badge, Checkbox, IconButton } from "./ui";
 import { daysLabel } from "../utils/goalSync";
+import { addDaysToDateKey, isTaskDueToday, todayDateKey } from "../utils/ecd";
+import { colors, spacing, type } from "../theme";
 
 function getOrdinal(n) {
   const v = n % 100;
@@ -10,39 +12,52 @@ function getOrdinal(n) {
   return n + (suffix[(v - 20) % 10] || suffix[v] || suffix[0]);
 }
 
-function resolveEcd(task) {
-  if (!task.ecd) {
-    return { label: "No date", recurring: false };
-  }
+function shortDate(value) {
+  const [year, month, day] = value.split("-");
+  const currentYear = new Date().getFullYear();
+  const mm = String(parseInt(month, 10)).padStart(2, "0");
+  const dd = String(parseInt(day, 10)).padStart(2, "0");
+  if (parseInt(year, 10) === currentYear) return `${mm}/${dd}`;
+  return `${mm}/${dd}/${year.slice(-2)}`;
+}
 
-  switch (task.ecd.type) {
+/**
+ * The due label for a task's ECD, with a tone that says how urgent it is:
+ * today (brand), overdue and not done (red), recurring (repeat icon, brand
+ * when it is due today), otherwise neutral. Undated tasks show no label — the
+ * missing date chip says it. Date keys compare as strings (YYYY-MM-DD), never
+ * through `new Date("YYYY-MM-DD")`.
+ */
+export function resolveEcd(task, today = todayDateKey()) {
+  const ecd = task.ecd;
+  if (!ecd) return null;
+
+  switch (ecd.type) {
     case "date": {
-      const [year, month, day] = task.ecd.value.split("-");
-      const currentYear = new Date().getFullYear();
-      const mm = String(parseInt(month, 10)).padStart(2, "0");
-      const dd = String(parseInt(day, 10)).padStart(2, "0");
-      if (parseInt(year, 10) === currentYear) {
-        return { label: `${mm}/${dd}`, recurring: false };
-      }
-      const yy = year.slice(-2);
-      return { label: `${mm}/${dd}/${yy}`, recurring: false };
+      const value = ecd.value;
+      if (value === today) return { label: "Today", tone: "primary", icon: "calendar" };
+      if (value === addDaysToDateKey(today, 1))
+        return { label: "Tomorrow", tone: "neutral", icon: "calendar-outline" };
+      if (value < today && !task.done)
+        return { label: `Overdue · ${shortDate(value)}`, tone: "danger", icon: "alert-circle" };
+      return { label: shortDate(value), tone: "neutral", icon: "calendar-outline" };
     }
-    case "day_of_week": {
-      const label = task.ecd.value.join(", ");
-      return { label: `↻ ${label}`, recurring: true };
-    }
-    case "day_of_month": {
-      const label = [...task.ecd.value]
-        .sort((a, b) => a - b)
-        .map((d) => getOrdinal(d))
-        .join(", ");
-      return { label: `↻ ${label}`, recurring: true };
-    }
+    case "day_of_week":
+    case "day_of_month":
     case "day_of_year": {
-      return { label: `↻ ${task.ecd.value}`, recurring: true };
+      let label;
+      if (ecd.type === "day_of_week") label = daysLabel(ecd.value);
+      else if (ecd.type === "day_of_month")
+        label = [...ecd.value]
+          .sort((a, b) => a - b)
+          .map((d) => getOrdinal(d))
+          .join(", ");
+      else label = ecd.value;
+      const dueToday = !task.done && isTaskDueToday(ecd);
+      return { label, tone: dueToday ? "primary" : "neutral", icon: "repeat", recurring: true };
     }
     default:
-      return { label: "No date", recurring: false };
+      return null;
   }
 }
 
@@ -66,7 +81,9 @@ export default function TaskCard({
   onDelete,
 }) {
   const [editModalOpen, setEditModalOpen] = useState(false);
-  const { label: ecdLabel, recurring: ecdRecurring } = resolveEcd(task);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [pressed, setPressed] = useState(false);
+  const due = resolveEcd(task);
   // The days the streak is measured over, worded as the Goals view words them
   // (a seven-day habit reads "Daily"). Habits always carry a day_of_week ECD.
   const streakDays =
@@ -78,102 +95,109 @@ export default function TaskCard({
   const canMoveUp = !isFirst && !(task.done && prevTaskDone === false);
   const canMoveDown = !isLast && !(!task.done && nextTaskDone === true);
 
+  const menuActions = [
+    {
+      key: "edit",
+      label: "Edit task",
+      icon: "pencil",
+      onPress: () => setEditModalOpen(true),
+    },
+    {
+      key: "up",
+      label: "Move up",
+      icon: "arrow-up",
+      disabled: !canMoveUp,
+      onPress: () => onMoveUp(task._id),
+    },
+    {
+      key: "down",
+      label: "Move down",
+      icon: "arrow-down",
+      disabled: !canMoveDown,
+      onPress: () => onMoveDown(task._id),
+    },
+    {
+      key: "delete",
+      label: "Delete task",
+      icon: "trash-outline",
+      destructive: true,
+      onPress: () => onDelete(task._id),
+    },
+  ];
+
   return (
     <>
-      <View style={[styles.card, task.done && styles.cardDone]}>
-        {/* Checkbox */}
-        <TouchableOpacity
-          style={[styles.checkbox, task.done && styles.checkboxChecked]}
+      {/* Checkbox, body and "⋯" are siblings (not nested in one pressable) so
+          screen readers can reach each control on its own. The whole row
+          still highlights while the body is pressed. */}
+      <View style={[styles.card, pressed && styles.pressed]}>
+        <Checkbox
+          checked={task.done}
+          label={task.done ? `Mark "${task.name}" not done` : `Mark "${task.name}" done`}
           onPress={() => onToggleDone(task._id)}
-        >
-          {task.done && <Ionicons name="checkmark" size={14} color="#fff" />}
-        </TouchableOpacity>
+          style={styles.checkbox}
+        />
 
-        {/* Body: name + ecd + notes */}
-        <View style={styles.body}>
-          <View style={styles.labelRow}>
-            <Text
-              style={[styles.name, task.done && styles.nameDone]}
-              numberOfLines={2}
-            >
-              {task.name}
-            </Text>
-            <View
-              style={[
-                styles.ecdBadge,
-                ecdRecurring && styles.ecdBadgeRecurring,
-              ]}
-            >
-              <Text
-                style={[
-                  styles.ecdText,
-                  ecdRecurring && styles.ecdTextRecurring,
-                ]}
-              >
-                {ecdLabel}
-              </Text>
+        <Pressable
+          testID={`task-${task._id}`}
+          onPress={() => setEditModalOpen(true)}
+          onLongPress={() => setMenuOpen(true)}
+          onPressIn={() => setPressed(true)}
+          onPressOut={() => setPressed(false)}
+          accessibilityRole="button"
+          accessibilityLabel={`${task.name}${task.done ? ", done" : ""}${
+            due ? `, ${due.label}` : ""
+          }`}
+          accessibilityHint="Opens the task. Long press for more actions."
+          style={styles.body}
+        >
+          <Text style={[styles.name, task.done && styles.nameDone]} numberOfLines={2}>
+            {task.name}
+          </Text>
+          {due || streak ? (
+            <View style={styles.metaRow}>
+              {due ? <Badge label={due.label} tone={due.tone} icon={due.icon} /> : null}
+              {/* Habit streak, same badge the Goals view shows on the step this
+                  task belongs to — counted over the days the task is due, so an
+                  untouched off-day never breaks it. */}
+              {streak ? (
+                <Badge
+                  label={String(streak.current)}
+                  icon="flame"
+                  tone="accent"
+                  outline
+                  accessibilityLabel={`Current streak: ${streak.current} scheduled ${
+                    streak.current === 1 ? "day" : "days"
+                  } in a row (best ${streak.longest})${
+                    streakDays ? `, counting only ${streakDays}` : ""
+                  }`}
+                />
+              ) : null}
             </View>
-            {/* Habit streak, same badge the Goals view shows on the step this
-                task belongs to — counted over the days the task is due, so an
-                untouched off-day never breaks it. */}
-            {streak ? (
-              <View
-                style={styles.streakBadge}
-                accessibilityLabel={`Current streak: ${streak.current} scheduled ${
-                  streak.current === 1 ? "day" : "days"
-                } in a row (best ${streak.longest})${
-                  streakDays ? `, counting only ${streakDays}` : ""
-                }`}
-              >
-                <Text style={styles.streakText}>🔥 {streak.current}</Text>
-              </View>
-            ) : null}
-          </View>
+          ) : null}
           {task.notes ? (
             <Text style={styles.notesText} numberOfLines={1}>
-              → {task.notes}
+              {task.notes}
             </Text>
           ) : null}
-        </View>
+        </Pressable>
 
-        {/* Action buttons */}
-        <View style={styles.actions}>
-          <TouchableOpacity
-            style={styles.actionBtn}
-            onPress={() => setEditModalOpen(true)}
-          >
-            <Ionicons name="pencil" size={16} color="#656d76" />
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.actionBtn, !canMoveUp && styles.actionDisabled]}
-            onPress={() => onMoveUp(task._id)}
-            disabled={!canMoveUp}
-          >
-            <Ionicons
-              name="arrow-up"
-              size={16}
-              color={canMoveUp ? "#656d76" : "#ccc"}
-            />
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.actionBtn, !canMoveDown && styles.actionDisabled]}
-            onPress={() => onMoveDown(task._id)}
-            disabled={!canMoveDown}
-          >
-            <Ionicons
-              name="arrow-down"
-              size={16}
-              color={canMoveDown ? "#656d76" : "#ccc"}
-            />
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.actionBtn}
-            onPress={() => onDelete(task._id)}
-          >
-            <Ionicons name="trash-outline" size={16} color="#e74c3c" />
-          </TouchableOpacity>
-        </View>
+        <IconButton
+          icon="ellipsis-horizontal"
+          label={`More actions for ${task.name}`}
+          onPress={() => setMenuOpen(true)}
+          size="sm"
+          style={styles.more}
+        />
       </View>
+
+      <ActionSheet
+        visible={menuOpen}
+        title={task.name}
+        subtitle={due ? due.label : undefined}
+        actions={menuActions}
+        onClose={() => setMenuOpen(false)}
+      />
 
       <EditTaskModal
         visible={editModalOpen}
@@ -197,95 +221,44 @@ const styles = StyleSheet.create({
   card: {
     flexDirection: "row",
     alignItems: "flex-start",
-    paddingVertical: 10,
-    paddingHorizontal: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: "#eaeef2",
-    backgroundColor: "#fff",
+    paddingVertical: spacing.xs,
+    paddingRight: spacing.xs,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.divider,
+    backgroundColor: colors.surface,
   },
-  cardDone: {
-    opacity: 0.6,
+  pressed: {
+    backgroundColor: colors.surfaceMuted,
   },
   checkbox: {
-    width: 22,
-    height: 22,
-    borderRadius: 4,
-    borderWidth: 2,
-    borderColor: "#d0d7de",
-    justifyContent: "center",
-    alignItems: "center",
-    marginRight: 10,
-    marginTop: 2,
-  },
-  checkboxChecked: {
-    backgroundColor: "#6200ee",
-    borderColor: "#6200ee",
+    marginLeft: spacing.xs,
   },
   body: {
     flex: 1,
-    marginRight: 8,
-  },
-  labelRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    flexWrap: "wrap",
-    gap: 6,
+    paddingVertical: 11,
+    paddingRight: spacing.xs,
   },
   name: {
-    fontSize: 15,
+    ...type.callout,
     fontWeight: "500",
-    color: "#1f2328",
+    lineHeight: 21,
   },
   nameDone: {
     textDecorationLine: "line-through",
-    color: "#656d76",
+    color: colors.textTertiary,
   },
-  ecdBadge: {
-    backgroundColor: "#f0f0f0",
-    borderRadius: 10,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-  },
-  ecdBadgeRecurring: {
-    backgroundColor: "#e8f0fe",
-  },
-  ecdText: {
-    fontSize: 11,
-    color: "#656d76",
-    fontWeight: "500",
-  },
-  ecdTextRecurring: {
-    color: "#1a73e8",
-  },
-  /* Habit streak, counted over the days the task's ECD covers. Mirrors the
-     web FE's .task-card__streak; GoalsSection styles its step rows the same. */
-  streakBadge: {
-    borderWidth: 1,
-    borderColor: "#bc4c00",
-    borderRadius: 10,
-    paddingHorizontal: 7,
-    paddingVertical: 1,
-  },
-  streakText: {
-    fontSize: 11,
-    fontWeight: "600",
-    color: "#bc4c00",
+  metaRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "center",
+    gap: 6,
+    marginTop: 6,
   },
   notesText: {
-    fontSize: 13,
-    color: "#656d76",
-    marginTop: 3,
-    fontStyle: "italic",
+    ...type.footnote,
+    marginTop: 4,
   },
-  actions: {
-    flexDirection: "row",
-    gap: 2,
-  },
-  actionBtn: {
-    padding: 6,
-    borderRadius: 6,
-  },
-  actionDisabled: {
-    opacity: 0.4,
+  more: {
+    marginTop: 6,
   },
 });

@@ -1,13 +1,9 @@
 import React, { useState } from "react";
-import {
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  StyleSheet,
-  Platform,
-} from "react-native";
+import { View, Text, Pressable, StyleSheet, Platform } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 import DateTimePicker from "@react-native-community/datetimepicker";
+import { Chip, FieldLabel, SegmentedControl } from "./ui";
+import { colors, radii, spacing, type } from "../theme";
 
 const DOW_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const ECD_MODES = ["none", "date", "week", "month", "year"];
@@ -18,6 +14,11 @@ const MODE_LABELS = {
   month: "Monthly",
   year: "Yearly",
 };
+const MONTHS = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
+];
+const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 function getOrdinal(n) {
   const v = n % 100;
@@ -30,6 +31,46 @@ function toggleInArray(arr, val) {
     return arr.length > 1 ? arr.filter((v) => v !== val) : arr;
   }
   return [...arr, val].sort();
+}
+
+// Format Date to YYYY-MM-DD — component-wise, never via toISOString (UTC shift)
+export function formatDateToISO(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+// Format Date to D/M/YYYY
+function formatDateToDMY(date) {
+  return `${date.getDate()}/${date.getMonth() + 1}/${date.getFullYear()}`;
+}
+
+/** "2025-11-12" → "Wed, 12 November 2025" (parsed component-wise). */
+export function prettyDateKey(key) {
+  if (!key || !/^\d{4}-\d{2}-\d{2}$/.test(key)) return key || "";
+  const [y, m, d] = key.split("-").map((n) => parseInt(n, 10));
+  const date = new Date(y, m - 1, d);
+  return `${WEEKDAYS[date.getDay()]}, ${d} ${MONTHS[m - 1]} ${y}`;
+}
+
+/** "12/11/2025" (D/M/YYYY) → "12 November 2025". */
+function prettyDMY(value) {
+  if (!value || !/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(value)) return value || "";
+  const [d, m, y] = value.split("/").map((n) => parseInt(n, 10));
+  return `${d} ${MONTHS[m - 1]} ${y}`;
+}
+
+/** Quick picks for a one-time date: today, tomorrow and the next Monday. */
+export function dateShortcuts(now = new Date()) {
+  const base = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const plus = (n) => new Date(base.getFullYear(), base.getMonth(), base.getDate() + n);
+  const toMonday = ((8 - base.getDay()) % 7) || 7; // strictly after today
+  return [
+    { label: "Today", value: formatDateToISO(base) },
+    { label: "Tomorrow", value: formatDateToISO(plus(1)) },
+    { label: "Next Mon", value: formatDateToISO(plus(toMonday)) },
+  ];
 }
 
 export default function EcdPicker({
@@ -50,7 +91,8 @@ export default function EcdPicker({
   // Parse dateVal string to Date object for date picker
   const getDateForPicker = () => {
     if (dateVal && /^\d{4}-\d{2}-\d{2}$/.test(dateVal)) {
-      return new Date(dateVal + "T00:00:00");
+      const [y, m, d] = dateVal.split("-").map((n) => parseInt(n, 10));
+      return new Date(y, m - 1, d);
     }
     return new Date();
   };
@@ -65,22 +107,6 @@ export default function EcdPicker({
       return new Date(year, month, day);
     }
     return new Date();
-  };
-
-  // Format Date to YYYY-MM-DD
-  const formatDateToISO = (date) => {
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, "0");
-    const day = String(date.getDate()).padStart(2, "0");
-    return `${year}-${month}-${day}`;
-  };
-
-  // Format Date to D/M/YYYY
-  const formatDateToDMY = (date) => {
-    const day = date.getDate();
-    const month = date.getMonth() + 1;
-    const year = date.getFullYear();
-    return `${day}/${month}/${year}`;
   };
 
   const onDateChange = (event, selectedDate) => {
@@ -111,39 +137,35 @@ export default function EcdPicker({
     }
   };
 
+  const shortcuts = dateShortcuts();
+
   return (
     <View style={styles.container}>
-      <Text style={styles.label}>Due</Text>
-      <View style={styles.modeRow}>
-        {ECD_MODES.map((m) => (
-          <TouchableOpacity
-            key={m}
-            style={[styles.modeBtn, mode === m && styles.modeBtnActive]}
-            onPress={() => setMode(m)}
-          >
-            <Text
-              style={[
-                styles.modeBtnText,
-                mode === m && styles.modeBtnTextActive,
-              ]}
-            >
-              {MODE_LABELS[m]}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </View>
+      <FieldLabel>Due</FieldLabel>
+      <SegmentedControl
+        style={styles.modeRow}
+        value={mode}
+        onChange={setMode}
+        options={ECD_MODES.map((m) => ({ value: m, label: MODE_LABELS[m] }))}
+      />
 
       {mode === "date" && (
         <View>
-          <TouchableOpacity
-            style={styles.dateSelectorBtn}
+          <View style={styles.shortcutRow}>
+            {shortcuts.map((s) => (
+              <Chip
+                key={s.label}
+                size="sm"
+                label={s.label}
+                selected={dateVal === s.value}
+                onPress={() => setDateVal(s.value)}
+              />
+            ))}
+          </View>
+          <DateButton
+            label={prettyDateKey(dateVal) || "Select date"}
             onPress={() => setShowDatePicker(true)}
-          >
-            <Text style={styles.dateSelectorText}>
-              {dateVal || "Select Date"}
-            </Text>
-            <Text style={styles.calendarIcon}>📅</Text>
-          </TouchableOpacity>
+          />
           {showDatePicker && (
             <DateTimePicker
               value={getDateForPicker()}
@@ -157,60 +179,50 @@ export default function EcdPicker({
 
       {mode === "week" && (
         <View style={styles.dowRow}>
-          {DOW_LABELS.map((day) => (
-            <TouchableOpacity
-              key={day}
-              style={[
-                styles.dowBtn,
-                dowVal.includes(day) && styles.dowBtnActive,
-              ]}
-              onPress={() => setDowVal((prev) => toggleInArray(prev, day))}
-            >
-              <Text
-                style={[
-                  styles.dowBtnText,
-                  dowVal.includes(day) && styles.dowBtnTextActive,
-                ]}
+          {DOW_LABELS.map((day) => {
+            const on = dowVal.includes(day);
+            return (
+              <Pressable
+                key={day}
+                onPress={() => setDowVal((prev) => toggleInArray(prev, day))}
+                accessibilityRole="button"
+                accessibilityLabel={day}
+                accessibilityState={{ selected: on }}
+                style={[styles.dayBtn, on && styles.dayBtnOn]}
               >
-                {day}
-              </Text>
-            </TouchableOpacity>
-          ))}
+                <Text style={[styles.dayText, on && styles.dayTextOn]}>{day.slice(0, 2)}</Text>
+              </Pressable>
+            );
+          })}
         </View>
       )}
 
       {mode === "month" && (
         <View style={styles.domGrid}>
-          {Array.from({ length: 31 }, (_, i) => i + 1).map((d) => (
-            <TouchableOpacity
-              key={d}
-              style={[styles.domBtn, domVal.includes(d) && styles.domBtnActive]}
-              onPress={() => setDomVal((prev) => toggleInArray(prev, d))}
-            >
-              <Text
-                style={[
-                  styles.domBtnText,
-                  domVal.includes(d) && styles.domBtnTextActive,
-                ]}
+          {Array.from({ length: 31 }, (_, i) => i + 1).map((d) => {
+            const on = domVal.includes(d);
+            return (
+              <Pressable
+                key={d}
+                onPress={() => setDomVal((prev) => toggleInArray(prev, d))}
+                accessibilityRole="button"
+                accessibilityLabel={getOrdinal(d)}
+                accessibilityState={{ selected: on }}
+                style={[styles.domBtn, on && styles.dayBtnOn]}
               >
-                {d}
-              </Text>
-            </TouchableOpacity>
-          ))}
+                <Text style={[styles.dayText, on && styles.dayTextOn]}>{d}</Text>
+              </Pressable>
+            );
+          })}
         </View>
       )}
 
       {mode === "year" && (
         <View>
-          <TouchableOpacity
-            style={styles.dateSelectorBtn}
+          <DateButton
+            label={prettyDMY(yearVal) || "Select date"}
             onPress={() => setShowYearPicker(true)}
-          >
-            <Text style={styles.dateSelectorText}>
-              {yearVal || "Select Date"}
-            </Text>
-            <Text style={styles.calendarIcon}>📅</Text>
-          </TouchableOpacity>
+          />
           {showYearPicker && (
             <DateTimePicker
               value={getYearDateForPicker()}
@@ -224,153 +236,121 @@ export default function EcdPicker({
 
       {/* Hint text */}
       {mode === "week" && dowVal.length > 0 && (
-        <Text style={styles.hint}>Repeats every {dowVal.join(", ")}</Text>
+        <Hint>Repeats every {dowVal.join(", ")}</Hint>
       )}
       {mode === "month" && domVal.length > 0 && (
-        <Text style={styles.hint}>
+        <Hint>
           Repeats on the{" "}
           {[...domVal]
             .sort((a, b) => a - b)
             .map((d) => getOrdinal(d))
             .join(", ")}{" "}
           of each month
-        </Text>
+        </Hint>
       )}
-      {mode === "year" && yearVal ? (
-        <Text style={styles.hint}>Repeats annually on {yearVal}</Text>
-      ) : null}
+      {mode === "year" && yearVal ? <Hint>Repeats annually on {yearVal}</Hint> : null}
+    </View>
+  );
+}
+
+function DateButton({ label, onPress }) {
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={`Pick date, ${label}`}
+      style={({ pressed }) => [styles.dateBtn, pressed && styles.dateBtnPressed]}
+    >
+      <Text style={styles.dateText}>{label}</Text>
+      <Ionicons name="calendar-outline" size={20} color={colors.primary} />
+    </Pressable>
+  );
+}
+
+function Hint({ children }) {
+  return (
+    <View style={styles.hintRow}>
+      <Ionicons name="repeat" size={14} color={colors.textSecondary} />
+      <Text style={styles.hint}>{children}</Text>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    marginBottom: 16,
-  },
-  label: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: "#656d76",
-    marginBottom: 8,
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
+    marginBottom: spacing.lg,
   },
   modeRow: {
+    marginBottom: spacing.md,
+  },
+  shortcutRow: {
     flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 6,
-    marginBottom: 12,
+    gap: spacing.sm - 2,
+    marginBottom: spacing.sm,
   },
-  modeBtn: {
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: "#d0d7de",
-    backgroundColor: "#f6f8fa",
-  },
-  modeBtnActive: {
-    backgroundColor: "#6200ee",
-    borderColor: "#6200ee",
-  },
-  modeBtnText: {
-    fontSize: 13,
-    fontWeight: "500",
-    color: "#555",
-  },
-  modeBtnTextActive: {
-    color: "#fff",
-  },
-  dateInput: {
-    borderWidth: 1,
-    borderColor: "#d0d7de",
-    borderRadius: 8,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    fontSize: 15,
-    color: "#1f2328",
-    backgroundColor: "#fafafa",
-    marginBottom: 8,
-  },
-  dateSelectorBtn: {
+  dateBtn: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    borderWidth: 1,
-    borderColor: "#d0d7de",
-    borderRadius: 8,
+    minHeight: 48,
+    borderRadius: radii.md,
     paddingHorizontal: 14,
-    paddingVertical: 12,
-    backgroundColor: "#fafafa",
-    marginBottom: 8,
+    backgroundColor: colors.surfaceMuted,
+    marginBottom: spacing.sm,
   },
-  dateSelectorText: {
-    fontSize: 15,
-    color: "#1f2328",
+  dateBtnPressed: {
+    backgroundColor: colors.surfaceSunken,
+  },
+  dateText: {
+    ...type.body,
     flex: 1,
-  },
-  calendarIcon: {
-    fontSize: 20,
-    marginLeft: 8,
   },
   dowRow: {
     flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 6,
-    marginBottom: 8,
+    justifyContent: "space-between",
+    marginBottom: spacing.sm,
   },
-  dowBtn: {
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: "#d0d7de",
-    backgroundColor: "#f6f8fa",
+  dayBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.surfaceMuted,
+    alignItems: "center",
+    justifyContent: "center",
   },
-  dowBtnActive: {
-    backgroundColor: "#6200ee",
-    borderColor: "#6200ee",
+  dayBtnOn: {
+    backgroundColor: colors.primary,
   },
-  dowBtnText: {
-    fontSize: 13,
-    fontWeight: "500",
-    color: "#555",
+  dayText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: colors.textSecondary,
   },
-  dowBtnTextActive: {
-    color: "#fff",
+  dayTextOn: {
+    color: colors.onPrimary,
   },
   domGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: 5,
-    marginBottom: 8,
+    gap: 6,
+    marginBottom: spacing.sm,
   },
   domBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: "#d0d7de",
-    backgroundColor: "#f6f8fa",
-    justifyContent: "center",
+    width: 40,
+    height: 40,
+    borderRadius: radii.sm + 2,
+    backgroundColor: colors.surfaceMuted,
     alignItems: "center",
+    justifyContent: "center",
   },
-  domBtnActive: {
-    backgroundColor: "#6200ee",
-    borderColor: "#6200ee",
-  },
-  domBtnText: {
-    fontSize: 13,
-    fontWeight: "500",
-    color: "#555",
-  },
-  domBtnTextActive: {
-    color: "#fff",
+  hintRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginTop: spacing.xs,
   },
   hint: {
-    fontSize: 12,
-    color: "#656d76",
-    fontStyle: "italic",
-    marginTop: 4,
+    ...type.footnote,
+    flex: 1,
   },
 });

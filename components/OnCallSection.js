@@ -4,17 +4,21 @@ import React, {
   useCallback,
   useImperativeHandle,
 } from "react";
-import {
-  StyleSheet,
-  View,
-  Text,
-  TouchableOpacity,
-  ActivityIndicator,
-} from "react-native";
+import { StyleSheet, View, Text, Pressable } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as onCallApi from "../api/oncall";
 import OnCallModal from "./OnCallModal";
 import ConfirmModal from "./ConfirmModal";
+import {
+  ActionSheet,
+  Badge,
+  Banner,
+  Card,
+  EmptyState,
+  IconButton,
+  LoadingState,
+  SectionHeader,
+} from "./ui";
 import { formatDateKey } from "../utils/ecd";
 import {
   dateKeyOf,
@@ -26,11 +30,8 @@ import {
   onCallAgenda,
   shiftMinutes,
 } from "../utils/oncall";
+import { colors, radii, shadows, spacing, type } from "../theme";
 
-const RED = "#cf222e";
-const RED_TEXT = "#a40e26";
-const RED_SOFT = "rgba(207,34,46,0.08)";
-const RED_BORDER = "rgba(207,34,46,0.55)";
 /**
  * On-call view (mirrors the web FE's OnCallPanel): one agenda of upcoming
  * shifts with the off-call gaps between them — "Not on call from Mon 11/16
@@ -53,6 +54,8 @@ export default function OnCallSection({ addRef, onShiftsChanged }) {
   const [now, setNow] = useState(() => new Date());
   const [modalState, setModalState] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
+  // The shift whose "⋯" menu (edit / delete) is open.
+  const [menuFor, setMenuFor] = useState(null);
 
   useImperativeHandle(addRef, () => ({
     openAdd: () => setModalState({ mode: "add" }),
@@ -112,12 +115,7 @@ export default function OnCallSection({ addRef, onShiftsChanged }) {
   };
 
   if (loading) {
-    return (
-      <View style={styles.centered}>
-        <ActivityIndicator size="small" color="#1e88e5" />
-        <Text style={styles.loadingText}>Loading on-call shifts…</Text>
-      </View>
-    );
+    return <LoadingState label="Loading on-call shifts…" style={styles.loading} />;
   }
 
   const today = dateKeyOf(now);
@@ -128,103 +126,77 @@ export default function OnCallSection({ addRef, onShiftsChanged }) {
     0,
   );
 
+  const menuActions = menuFor
+    ? [
+        {
+          key: "edit",
+          label: "Edit shift",
+          icon: "pencil",
+          onPress: () => setModalState({ mode: "edit", shift: menuFor }),
+        },
+        {
+          key: "delete",
+          label: "Delete shift",
+          icon: "trash-outline",
+          destructive: true,
+          onPress: () => setDeleteTarget(menuFor),
+        },
+      ]
+    : [];
+
   return (
     <View>
       {error && (
-        <View style={styles.errorBar}>
-          <Text style={styles.errorText}>Action failed: {error}</Text>
-          <TouchableOpacity onPress={() => setError(null)}>
-            <Ionicons name="close" size={18} color="#e74c3c" />
-          </TouchableOpacity>
-        </View>
+        <Banner tone="danger" icon="alert" onDismiss={() => setError(null)}>
+          {`Action failed: ${error}`}
+        </Banner>
       )}
 
       {shiftCount === 0 ? (
-        <Text style={styles.emptyText}>
-          No upcoming on-call shifts — add one with the + above. Type the
-          shorthand you already use, like 11/16 9-22. On-call is kept separate
-          and never changes your tasks.
-        </Text>
+        <Card padded={false}>
+          <EmptyState
+            compact
+            icon="notifications-outline"
+            title="No upcoming on-call shifts — add one with the + above."
+            message="Type the shorthand you already use, like 11/16 9-22. On-call is kept separate and never changes your tasks."
+          />
+        </Card>
       ) : (
-        <View style={styles.list}>
-          <View style={styles.listHeader}>
-            <Text style={styles.listTitle}>Upcoming</Text>
-            <Text style={styles.totals}>
-              {shiftCount} {shiftCount === 1 ? "shift" : "shifts"} ·{" "}
-              {formatDuration(totalMinutes)} on call
-            </Text>
-          </View>
+        <View style={styles.agenda}>
+          <SectionHeader
+            title="Upcoming"
+            right={
+              <Text style={styles.totals}>
+                {shiftCount} {shiftCount === 1 ? "shift" : "shifts"} ·{" "}
+                {formatDuration(totalMinutes)} on call
+              </Text>
+            }
+          />
           {items.map((item) => {
             if (item.kind === "gap") {
               return (
-                <View
+                <GapRow
                   key={`gap-${item.from.getTime()}`}
-                  style={[styles.gapRow, item.fromNow && styles.gapRowNow]}
-                >
-                  <View style={styles.gapRail} />
-                  <View style={styles.rowMain}>
-                    <Text style={styles.gapTitle}>
-                      Not on call{item.fromNow ? " now" : ""}
-                    </Text>
-                    <Text style={styles.rowMeta}>
-                      {item.fromNow
-                        ? `until ${formatMoment(item.to, now)}`
-                        : `from ${formatMoment(item.from, now)} to ${formatMoment(item.to, now)}`}
-                    </Text>
-                  </View>
-                  <Text style={styles.gapSpan}>{formatSpan(item.minutes)}</Text>
-                </View>
+                  gap={item}
+                  now={now}
+                />
               );
             }
             const { shift } = item;
-            const active = isActive(shift, now);
             return (
-              <View
+              <ShiftCard
                 key={shift._id}
-                style={[
-                  styles.row,
-                  shift.type === "primary" ? styles.rowPrimary : styles.rowSecondary,
-                ]}
-              >
-                <View style={styles.rowMain}>
-                  <View style={styles.rowHeader}>
-                    <Text style={styles.rowTimes}>
-                      {shift.start} – {shift.end}
-                    </Text>
-                    {isOvernight(shift) && <Text style={styles.plus1}>+1</Text>}
-                    {shift.type === "secondary" && (
-                      <Text style={styles.pill}>secondary</Text>
-                    )}
-                    {active && (
-                      <Text style={[styles.pill, styles.pillNow]}>now</Text>
-                    )}
-                  </View>
-                  <Text style={styles.rowMeta}>
-                    {shift.date === today ? "Today · " : ""}
-                    {formatDateKey(shift.date)} ·{" "}
-                    {formatDuration(shiftMinutes(shift))}
-                    {shift.note ? ` · ${shift.note}` : ""}
-                  </Text>
-                </View>
-                <TouchableOpacity
-                  style={styles.iconBtn}
-                  onPress={() => setModalState({ mode: "edit", shift })}
-                  accessibilityLabel={`Edit on-call shift ${shift.date}`}
-                >
-                  <Ionicons name="pencil" size={16} color="#656d76" />
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.iconBtn}
-                  onPress={() => setDeleteTarget(shift)}
-                  accessibilityLabel={`Delete on-call shift ${shift.date}`}
-                >
-                  <Ionicons name="trash-outline" size={16} color="#e74c3c" />
-                </TouchableOpacity>
-              </View>
+                shift={shift}
+                active={isActive(shift, now)}
+                isToday={shift.date === today}
+                onEdit={() => setModalState({ mode: "edit", shift })}
+                onMore={() => setMenuFor(shift)}
+              />
             );
           })}
           {freeAfter && (
             <View style={styles.endRow}>
+              <Ionicons name="flag-outline" size={14} color={colors.textTertiary} />
               <Text style={styles.endText}>
                 Nothing scheduled after {formatMoment(freeAfter, now)}
               </Text>
@@ -232,6 +204,19 @@ export default function OnCallSection({ addRef, onShiftsChanged }) {
           )}
         </View>
       )}
+
+      <ActionSheet
+        visible={!!menuFor}
+        title={menuFor ? `${menuFor.start} – ${menuFor.end}` : undefined}
+        subtitle={
+          menuFor
+            ? `${menuFor.type === "primary" ? "Primary" : "Secondary"} · ${formatDateKey(menuFor.date)}`
+            : undefined
+        }
+        actions={menuActions}
+        onClose={() => setMenuFor(null)}
+        testID="oncall-menu"
+      />
 
       {modalState && (
         <OnCallModal
@@ -255,113 +240,191 @@ export default function OnCallSection({ addRef, onShiftsChanged }) {
   );
 }
 
+/**
+ * One shift as a timeline card. Primary: solid red edge on a white card.
+ * Secondary: a dashed red outline, no fill — the same split the on-call
+ * banner and the add sheet's type picker draw. Tap edits; "⋯" for the menu.
+ */
+function ShiftCard({ shift, active, isToday, onEdit, onMore }) {
+  const [pressed, setPressed] = useState(false);
+  const primary = shift.type === "primary";
+  const overnight = isOvernight(shift);
+  const meta = `${isToday ? "Today · " : ""}${formatDateKey(shift.date)} · ${formatDuration(
+    shiftMinutes(shift),
+  )}${shift.note ? ` · ${shift.note}` : ""}`;
+  return (
+    // Body and "⋯" are siblings so each is its own screen-reader stop; the
+    // whole card highlights while the body is pressed.
+    <View
+      style={[
+        styles.shift,
+        primary ? styles.shiftPrimary : styles.shiftSecondary,
+        active && styles.shiftActive,
+        pressed && styles.shiftPressed,
+      ]}
+    >
+      <Pressable
+        testID={`shift-${shift._id}`}
+        onPress={onEdit}
+        onLongPress={onMore}
+        onPressIn={() => setPressed(true)}
+        onPressOut={() => setPressed(false)}
+        accessibilityRole="button"
+        accessibilityLabel={`${primary ? "Primary" : "Secondary"} on-call shift ${shift.start} to ${
+          shift.end
+        }${overnight ? " next day" : ""}${active ? ", on now" : ""}, ${meta}`}
+        accessibilityHint="Edits the shift. Long press for more actions."
+        style={styles.shiftMain}
+      >
+        <View style={styles.shiftHeader}>
+          <Text style={styles.shiftTimes}>
+            {shift.start} – {shift.end}
+          </Text>
+          {overnight && <Text style={styles.plus1}>+1</Text>}
+          {!primary && <Badge label="secondary" tone="danger" outline />}
+          {active && <Badge label="now" tone="danger" icon="radio-button-on" />}
+        </View>
+        <Text style={styles.shiftMeta}>{meta}</Text>
+      </Pressable>
+      <IconButton
+        icon="ellipsis-horizontal"
+        label={`More actions for on-call shift ${shift.date}`}
+        onPress={onMore}
+      />
+    </View>
+  );
+}
+
+/**
+ * Off-call gap: a quiet, muted row with a dashed grey rail where a shift's
+ * coloured edge would be — the absence of cover, not an entry. "Not on call
+ * now" (the opening gap) gets a soft success tint: you're free.
+ */
+function GapRow({ gap, now }) {
+  return (
+    <View
+      style={[styles.gap, gap.fromNow && styles.gapNow]}
+      testID={gap.fromNow ? "oncall-gap-now" : "oncall-gap"}
+    >
+      <View style={styles.gapRail} />
+      <View style={styles.shiftMain}>
+        <Text style={styles.gapTitle}>Not on call{gap.fromNow ? " now" : ""}</Text>
+        <Text style={styles.gapMeta}>
+          {gap.fromNow
+            ? `until ${formatMoment(gap.to, now)}`
+            : `from ${formatMoment(gap.from, now)} to ${formatMoment(gap.to, now)}`}
+        </Text>
+      </View>
+      <Badge label={formatSpan(gap.minutes)} tone={gap.fromNow ? "success" : "neutral"} />
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
-  centered: { alignItems: "center", paddingVertical: 32 },
-  loadingText: { marginTop: 8, fontSize: 14, color: "#656d76" },
-  errorBar: {
+  loading: {
+    flex: 0,
+    paddingVertical: spacing.xxxl,
+  },
+  agenda: {
+    marginBottom: spacing.xxl,
+    gap: spacing.sm,
+  },
+  totals: {
+    ...type.caption,
+    fontWeight: "400",
+  },
+  shift: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-    backgroundColor: "#fef2f2",
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: "#fde8e8",
+    gap: spacing.xs,
+    minHeight: 64,
+    paddingVertical: spacing.sm + 2,
+    paddingLeft: spacing.md + 2,
+    paddingRight: spacing.xs,
+    borderRadius: radii.lg,
   },
-  errorText: { fontSize: 13, color: "#e74c3c", flex: 1, marginRight: 8 },
-  emptyText: {
-    fontSize: 14,
-    color: "#656d76",
-    lineHeight: 20,
-    textAlign: "center",
-    paddingVertical: 24,
-    paddingHorizontal: 8,
+  shiftPrimary: {
+    backgroundColor: colors.surface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.dangerBorder,
+    borderLeftWidth: 4,
+    borderLeftColor: colors.danger,
+    ...shadows.card,
   },
-  list: {
-    marginBottom: 24,
-    borderWidth: 1,
-    borderColor: "#eaeef2",
-    borderRadius: 10,
-    backgroundColor: "#fff",
+  shiftSecondary: {
+    backgroundColor: colors.surface,
+    borderWidth: 1.5,
+    borderStyle: "dashed",
+    borderColor: colors.danger,
+  },
+  shiftActive: {
+    backgroundColor: colors.dangerSoft,
+  },
+  shiftPressed: {
+    opacity: 0.85,
+  },
+  shiftMain: {
+    flex: 1,
+    minWidth: 0,
+  },
+  shiftHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: spacing.sm - 2,
+  },
+  shiftTimes: {
+    ...type.headline,
+  },
+  plus1: {
+    ...type.caption,
+  },
+  shiftMeta: {
+    ...type.footnote,
+    marginTop: spacing.xxs,
+  },
+  gap: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    paddingVertical: spacing.sm + 2,
+    paddingLeft: spacing.md + 2,
+    paddingRight: spacing.md,
+    borderRadius: radii.md,
+    backgroundColor: colors.surfaceMuted,
     overflow: "hidden",
   },
-  row: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    paddingVertical: 11,
-    paddingLeft: 11,
-    paddingRight: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: "#eaeef2",
-    borderLeftWidth: 3,
+  gapNow: {
+    backgroundColor: colors.successSoft,
   },
-  rowPrimary: { borderLeftColor: RED },
-  rowSecondary: { borderLeftColor: RED_BORDER, borderStyle: "dashed" },
-  rowMain: { flex: 1, minWidth: 0 },
-  rowHeader: { flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 6 },
-  rowTimes: { fontSize: 14, fontWeight: "600", color: "#1f2328" },
-  plus1: { fontSize: 11, color: "#656d76" },
-  pill: {
-    fontSize: 10,
-    paddingHorizontal: 6,
-    paddingVertical: 1,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: RED_BORDER,
-    color: RED_TEXT,
-    overflow: "hidden",
-  },
-  pillNow: { backgroundColor: RED, borderColor: RED, color: "#fff" },
-  rowMeta: { fontSize: 12, color: "#656d76", marginTop: 2 },
-  listHeader: {
-    flexDirection: "row",
-    alignItems: "baseline",
-    justifyContent: "space-between",
-    paddingVertical: 10,
-    paddingLeft: 14,
-    paddingRight: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: "#eaeef2",
-  },
-  listTitle: { fontSize: 15, fontWeight: "700", color: "#1f2328" },
-  totals: { fontSize: 11, color: "#656d76" },
-  /* Off-call gap: a quiet row with a dashed grey rail where a shift's
-     coloured edge would be — the absence of cover, not an entry. */
-  gapRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    paddingVertical: 9,
-    paddingLeft: 14,
-    paddingRight: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: "#eaeef2",
-    backgroundColor: "#f6f8fa",
-  },
-  gapRowNow: { backgroundColor: "#eef6ee" },
   gapRail: {
     position: "absolute",
-    left: 0,
-    top: 0,
-    bottom: 0,
-    borderLeftWidth: 3,
-    borderLeftColor: "#d0d7de",
+    left: spacing.xs,
+    top: spacing.sm,
+    bottom: spacing.sm,
+    borderLeftWidth: 2,
+    borderLeftColor: colors.borderStrong,
     borderStyle: "dashed",
   },
-  gapTitle: { fontSize: 13, fontWeight: "600", color: "#1f2328" },
-  gapSpan: {
-    fontSize: 11,
+  gapTitle: {
+    ...type.subhead,
     fontWeight: "600",
-    color: "#57606a",
-    paddingHorizontal: 7,
-    paddingVertical: 2,
-    borderRadius: 999,
-    backgroundColor: "#eaeef2",
-    overflow: "hidden",
+    color: colors.textSecondary,
   },
-  endRow: { paddingVertical: 10, paddingLeft: 14 },
-  endText: { fontSize: 12, color: "#656d76" },
-  iconBtn: { padding: 6 },
+  gapMeta: {
+    ...type.footnote,
+    color: colors.textTertiary,
+    marginTop: spacing.xxs,
+  },
+  endRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs + 2,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.xs,
+  },
+  endText: {
+    ...type.footnote,
+    color: colors.textTertiary,
+  },
 });

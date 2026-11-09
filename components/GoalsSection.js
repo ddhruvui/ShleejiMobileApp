@@ -4,14 +4,7 @@ import React, {
   useCallback,
   useImperativeHandle,
 } from "react";
-import {
-  StyleSheet,
-  View,
-  Text,
-  TouchableOpacity,
-  ActivityIndicator,
-} from "react-native";
-import { Ionicons } from "@expo/vector-icons";
+import { StyleSheet, View, Text, Pressable } from "react-native";
 import * as goalsApi from "../api/goals";
 import * as headersApi from "../api/headers";
 import * as tasksApi from "../api/tasks";
@@ -19,6 +12,18 @@ import GoalModal from "./GoalModal";
 import AddStepModal from "./AddStepModal";
 import StepDaysModal from "./StepDaysModal";
 import ConfirmModal from "./ConfirmModal";
+import {
+  ActionSheet,
+  Badge,
+  Banner,
+  Card,
+  Checkbox,
+  EmptyState,
+  IconButton,
+  LoadingState,
+  ProgressBar,
+} from "./ui";
+import { colors, radii, spacing, type } from "../theme";
 import {
   ONE_STEP_HEADER,
   daysLabel,
@@ -337,230 +342,93 @@ export default function GoalsSection({ onTasksChanged, addRef }) {
   /* ── Render ── */
 
   if (loading) {
-    return (
-      <View style={styles.centered}>
-        <ActivityIndicator size="small" color="#6200ee" />
-        <Text style={styles.loadingText}>Loading goals…</Text>
-      </View>
-    );
+    return <LoadingState label="Loading goals…" style={styles.loading} />;
   }
 
   return (
     <View>
       {error && (
-        <View style={styles.errorBar}>
-          <Text style={styles.errorText}>Action failed: {error}</Text>
-          <TouchableOpacity onPress={() => setError(null)}>
-            <Ionicons name="close" size={18} color="#e74c3c" />
-          </TouchableOpacity>
-        </View>
+        <Banner
+          tone="danger"
+          icon="alert"
+          onDismiss={() => setError(null)}
+          dismissLabel="Dismiss error"
+        >
+          {`Action failed: ${error}`}
+        </Banner>
       )}
       {notice && (
-        <View style={styles.noticeBar}>
-          <Text style={styles.noticeText}>{notice}</Text>
-          <TouchableOpacity onPress={() => setNotice(null)}>
-            <Ionicons name="close" size={18} color="#1a7f37" />
-          </TouchableOpacity>
-        </View>
+        <Banner
+          tone="success"
+          icon="checkmark"
+          onDismiss={() => setNotice(null)}
+          dismissLabel="Dismiss notice"
+        >
+          {notice}
+        </Banner>
       )}
 
       {goals.map((goal, idx) => {
-        // Anything non-pending counts (covers legacy statuses from old data)
-        const underProgressCount = goal.steps.filter(
-          (s) => s.status !== "pending",
-        ).length;
         // Under-progress steps render above the pending backlog; all step
         // handlers index into this sorted list
         const steps = sortSteps(goal.steps);
         return (
-          <View key={goal._id} style={styles.section}>
-            <View style={styles.headerRow}>
-              <Text style={styles.headerName} numberOfLines={1}>
-                {goal.name}
-              </Text>
-              <View style={styles.headerActions}>
-                {goal.steps.length > 0 && (
-                  <Text style={styles.progressBadge}>
-                    {underProgressCount}/{goal.steps.length} under progress
-                  </Text>
-                )}
-                {/* Goal order is manual, like todo headers and projects —
-                    the server shifts neighbours to stay contiguous. */}
-                <TouchableOpacity
-                  style={[styles.headerBtn, idx === 0 && styles.busyBtn]}
-                  onPress={() => handleMoveGoal(goal, -1)}
-                  disabled={idx === 0}
-                >
-                  <Ionicons name="arrow-up" size={16} color="#656d76" />
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[
-                    styles.headerBtn,
-                    idx === goals.length - 1 && styles.busyBtn,
-                  ]}
-                  onPress={() => handleMoveGoal(goal, 1)}
-                  disabled={idx === goals.length - 1}
-                >
-                  <Ionicons name="arrow-down" size={16} color="#656d76" />
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.headerBtn}
-                  onPress={() => setDeleteTarget(goal)}
-                >
-                  <Ionicons name="trash-outline" size={16} color="#e74c3c" />
-                </TouchableOpacity>
-                {/* Same trailing "+" the todo puts on a header, adding one
-                    step at a time instead of retyping the whole list. */}
-                <TouchableOpacity
-                  style={styles.headerBtn}
-                  onPress={() => setAddStepGoal(goal)}
-                >
-                  <Ionicons name="add" size={18} color="#656d76" />
-                </TouchableOpacity>
-              </View>
-            </View>
-
-            <View style={styles.stepList}>
-              {steps.map((step, i) => {
-                const busy = busyStep === `${goal._id}:${i}`;
-                const isLast = i === steps.length - 1;
-                const started = step.status !== "pending";
-                const days = stepDays(step);
-                const streak = streakFor(streaks, step.name);
-                // Moves stay inside the step's own group — mirrors the todo's
-                // done/undone barrier
-                const canMoveUp =
-                  i > 0 && (steps[i - 1].status !== "pending") === started;
-                const canMoveDown =
-                  !isLast && (steps[i + 1].status !== "pending") === started;
-                return (
-                  <View
-                    key={`${step.name}-${i}`}
-                    style={[styles.stepRow, isLast && styles.stepRowLast]}
-                  >
-                    {/* Checkbox drives the step lifecycle: checked = under
-                        progress. Deliberately no done styling — a started
-                        step is active, not finished. */}
-                    <TouchableOpacity
-                      style={[
-                        styles.stepCheckbox,
-                        started && styles.stepCheckboxChecked,
-                        busy && styles.busyBtn,
-                      ]}
-                      onPress={() =>
-                        started
-                          ? handlePauseStep(goal, i)
-                          : setDaysTarget({ goal, index: i, mode: "start" })
-                      }
-                      disabled={busy}
-                    >
-                      {started && (
-                        <Ionicons name="checkmark" size={14} color="#fff" />
-                      )}
-                    </TouchableOpacity>
-                    <View style={styles.stepBody}>
-                      <Text style={styles.stepName} numberOfLines={2}>
-                        {step.name}
-                      </Text>
-                      {/* Same slot the todo uses for the ECD badge. A started
-                          step is a recurring task there, so it gets the
-                          recurring styling and the same day list its task
-                          card shows. */}
-                      <View style={styles.stepBadgeRow}>
-                        <View
-                          style={[
-                            styles.stepBadge,
-                            started && styles.stepBadgeStarted,
-                          ]}
-                        >
-                          <Text
-                            style={[
-                              styles.stepBadgeText,
-                              started && styles.stepBadgeTextStarted,
-                            ]}
-                          >
-                            {started ? `↻ ${daysLabel(days)}` : "Not started"}
-                          </Text>
-                        </View>
-                        {/* Streak over the step's own days — a habit set to
-                            Mon/Wed/Fri isn't broken by an untouched Tuesday,
-                            because no result is archived for a day the task
-                            wasn't due. */}
-                        {started && streak && (
-                          <View style={styles.streakBadge}>
-                            <Text style={styles.streakText}>
-                              🔥 {streak.current}
-                            </Text>
-                          </View>
-                        )}
-                      </View>
-                    </View>
-                    {/* Same action cluster the todo puts on a task */}
-                    <View style={styles.stepActions}>
-                      {/* Only a started step has a schedule to change; a
-                          pending one is asked for its days when it starts.
-                          The todo can't do it — EditTaskModal locks the ECD
-                          of goal-managed tasks, so this is the only way in. */}
-                      {started && (
-                        <TouchableOpacity
-                          style={styles.iconBtn}
-                          onPress={() =>
-                            setDaysTarget({ goal, index: i, mode: "edit" })
-                          }
-                          disabled={busy}
-                        >
-                          <Ionicons
-                            name="calendar-outline"
-                            size={15}
-                            color="#656d76"
-                          />
-                        </TouchableOpacity>
-                      )}
-                      <TouchableOpacity
-                        style={[styles.iconBtn, !canMoveUp && styles.busyBtn]}
-                        onPress={() => handleMoveStep(goal, i, -1)}
-                        disabled={busy || !canMoveUp}
-                      >
-                        <Ionicons name="arrow-up" size={15} color="#656d76" />
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        style={[styles.iconBtn, !canMoveDown && styles.busyBtn]}
-                        onPress={() => handleMoveStep(goal, i, 1)}
-                        disabled={busy || !canMoveDown}
-                      >
-                        <Ionicons name="arrow-down" size={15} color="#656d76" />
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        style={styles.iconBtn}
-                        onPress={() => setDeleteStepTarget({ goal, index: i })}
-                        disabled={busy}
-                      >
-                        <Ionicons
-                          name="trash-outline"
-                          size={15}
-                          color="#e74c3c"
-                        />
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                );
-              })}
-              {goal.steps.length === 0 && (
-                <Text style={styles.noStepsText}>No steps yet — add one!</Text>
-              )}
-            </View>
-          </View>
+          <GoalCard
+            key={goal._id}
+            goal={goal}
+            isFirst={idx === 0}
+            isLast={idx === goals.length - 1}
+            onAddStep={() => setAddStepGoal(goal)}
+            onMoveGoal={(delta) => handleMoveGoal(goal, delta)}
+            onDeleteGoal={() => setDeleteTarget(goal)}
+          >
+            {steps.map((step, i) => {
+              const started = step.status !== "pending";
+              const isLast = i === steps.length - 1;
+              return (
+                <StepRow
+                  key={`${step.name}-${i}`}
+                  step={step}
+                  started={started}
+                  isLast={isLast}
+                  days={stepDays(step)}
+                  streak={streakFor(streaks, step.name)}
+                  busy={busyStep === `${goal._id}:${i}`}
+                  // Moves stay inside the step's own group — mirrors the
+                  // todo's done/undone barrier
+                  canMoveUp={
+                    i > 0 && (steps[i - 1].status !== "pending") === started
+                  }
+                  canMoveDown={
+                    !isLast && (steps[i + 1].status !== "pending") === started
+                  }
+                  onToggle={() =>
+                    started
+                      ? handlePauseStep(goal, i)
+                      : setDaysTarget({ goal, index: i, mode: "start" })
+                  }
+                  onSetDays={() =>
+                    setDaysTarget({ goal, index: i, mode: "edit" })
+                  }
+                  onMoveUp={() => handleMoveStep(goal, i, -1)}
+                  onMoveDown={() => handleMoveStep(goal, i, 1)}
+                  onDelete={() => setDeleteStepTarget({ goal, index: i })}
+                />
+              );
+            })}
+          </GoalCard>
         );
       })}
 
       {goals.length === 0 && (
-        <Text style={styles.emptyText}>
-          No goals yet — add one! A goal (e.g. "Improve Health") lists the small
-          habits that get you there, built one step at a time: start a step,
-          pick the weekdays it runs on and it's under progress — for life —
-          then start the next when it sticks. Its streak counts only those
-          days. Pause anytime to shelve one.
-        </Text>
+        <EmptyState
+          compact
+          icon="flag-outline"
+          title="No goals yet — add one!"
+          message={
+            'A goal (e.g. "Improve Health") lists the small habits that get you there, built one step at a time: start a step, pick the weekdays it runs on and it\'s under progress — for life — then start the next when it sticks. Its streak counts only those days. Pause anytime to shelve one.'
+          }
+        />
       )}
 
       {/* Modals */}
@@ -630,203 +498,359 @@ export default function GoalsSection({ onTasksChanged, addRef }) {
   );
 }
 
+/**
+ * One goal: its full name, the "+" that adds a step and a "⋯" menu for the
+ * goal-level actions, then the under-progress summary and the step rows.
+ * Deliberately no edit action — a goal is created once and afterwards only
+ * its steps change, so GoalModal stays create-only.
+ */
+function GoalCard({
+  goal,
+  isFirst,
+  isLast,
+  onAddStep,
+  onMoveGoal,
+  onDeleteGoal,
+  children,
+}) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const total = goal.steps.length;
+  // Anything non-pending counts (covers legacy statuses from old data)
+  const underProgressCount = goal.steps.filter(
+    (s) => s.status !== "pending",
+  ).length;
+  const progressLabel = `${underProgressCount} of ${total} under progress`;
+  const percent = total > 0 ? Math.round((underProgressCount / total) * 100) : 0;
+
+  // Goal order is manual, like todo headers and projects — the server
+  // shifts neighbours to stay contiguous.
+  const menuActions = [
+    {
+      key: "up",
+      label: "Move up",
+      icon: "arrow-up",
+      disabled: isFirst,
+      onPress: () => onMoveGoal(-1),
+    },
+    {
+      key: "down",
+      label: "Move down",
+      icon: "arrow-down",
+      disabled: isLast,
+      onPress: () => onMoveGoal(1),
+    },
+    {
+      key: "delete",
+      label: "Delete goal",
+      icon: "trash-outline",
+      destructive: true,
+      onPress: onDeleteGoal,
+    },
+  ];
+
+  return (
+    <>
+      <Card padded={false} style={styles.card} testID={`goal-${goal._id}`}>
+        <View style={styles.goalHeader}>
+          <Text
+            style={styles.goalName}
+            numberOfLines={2}
+            accessibilityRole="header"
+          >
+            {goal.name}
+          </Text>
+          <View style={styles.goalActions}>
+            {/* Same trailing "+" the todo puts on a header, adding one step
+                at a time instead of retyping the whole list. */}
+            <IconButton
+              icon="add"
+              label={`Add step to ${goal.name}`}
+              variant="tonal"
+              size="sm"
+              onPress={onAddStep}
+            />
+            <IconButton
+              icon="ellipsis-horizontal"
+              label={`More actions for ${goal.name}`}
+              size="sm"
+              onPress={() => setMenuOpen(true)}
+            />
+          </View>
+        </View>
+
+        {total > 0 && (
+          <View style={styles.progress}>
+            <View style={styles.progressRow}>
+              <Text style={styles.progressText}>{progressLabel}</Text>
+              <Text style={styles.progressPct}>{`${percent}%`}</Text>
+            </View>
+            <ProgressBar
+              value={underProgressCount / total}
+              tone="success"
+              testID={`goal-${goal._id}-progress`}
+            />
+          </View>
+        )}
+
+        {children}
+        {total === 0 && (
+          <Text style={styles.noStepsText}>No steps yet — add one!</Text>
+        )}
+      </Card>
+
+      <ActionSheet
+        visible={menuOpen}
+        title={goal.name}
+        subtitle={total > 0 ? progressLabel : undefined}
+        actions={menuActions}
+        onClose={() => setMenuOpen(false)}
+      />
+    </>
+  );
+}
+
+/**
+ * A step row in TaskCard's shape so the two lists feel identical: checkbox,
+ * name, badges in the todo's ECD slot and a "⋯" menu for the rest. Tapping
+ * or long-pressing the row opens the same menu — a step has no edit form.
+ */
+function StepRow({
+  step,
+  started,
+  isLast,
+  days,
+  streak,
+  busy,
+  canMoveUp,
+  canMoveDown,
+  onToggle,
+  onSetDays,
+  onMoveUp,
+  onMoveDown,
+  onDelete,
+}) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [pressed, setPressed] = useState(false);
+  const openMenu = () => setMenuOpen(true);
+  const schedule = daysLabel(days);
+  const status = started ? "Under progress" : "Not started";
+
+  const menuActions = [
+    // Only a started step has a schedule to change; a pending one is asked
+    // for its days when it starts. The todo can't do it — EditTaskModal
+    // locks the ECD of goal-managed tasks, so this is the only way in.
+    ...(started
+      ? [
+          {
+            key: "days",
+            label: "Set days",
+            icon: "calendar-outline",
+            disabled: busy,
+            onPress: onSetDays,
+          },
+        ]
+      : []),
+    {
+      key: "up",
+      label: "Move up",
+      icon: "arrow-up",
+      disabled: busy || !canMoveUp,
+      onPress: onMoveUp,
+    },
+    {
+      key: "down",
+      label: "Move down",
+      icon: "arrow-down",
+      disabled: busy || !canMoveDown,
+      onPress: onMoveDown,
+    },
+    {
+      key: "delete",
+      label: "Delete step",
+      icon: "trash-outline",
+      destructive: true,
+      disabled: busy,
+      onPress: onDelete,
+    },
+  ];
+
+  return (
+    <>
+      {/* Checkbox, body and "⋯" are siblings so each is its own
+          screen-reader stop; the whole row highlights while the body is
+          pressed. */}
+      <View
+        style={[
+          styles.stepRow,
+          isLast && styles.stepRowLast,
+          pressed && styles.stepRowPressed,
+        ]}
+      >
+        {/* Checkbox drives the step lifecycle: checked = under progress.
+            Deliberately no done styling — a started step is active, not
+            finished. */}
+        <Checkbox
+          checked={started}
+          label={started ? `Pause "${step.name}"` : `Start "${step.name}"`}
+          onPress={onToggle}
+          disabled={busy}
+          style={styles.checkbox}
+        />
+
+        <Pressable
+          onPress={openMenu}
+          onLongPress={openMenu}
+          onPressIn={() => setPressed(true)}
+          onPressOut={() => setPressed(false)}
+          accessibilityRole="button"
+          accessibilityLabel={`${step.name}, ${status}${
+            started ? `, ${schedule}` : ""
+          }`}
+          accessibilityHint="Opens the actions for this step."
+          style={styles.stepBody}
+        >
+          <Text style={styles.stepName} numberOfLines={2}>
+            {step.name}
+          </Text>
+          {/* Same slot the todo uses for the ECD badge. A started step is a
+              recurring task there, so it gets the same day list its task
+              card shows. */}
+          <View style={styles.metaRow}>
+            <Badge label={status} tone={started ? "success" : "neutral"} />
+            {started && (
+              <Badge label={schedule} icon="calendar-outline" tone="neutral" />
+            )}
+            {/* Streak over the step's own days — a habit set to Mon/Wed/Fri
+                isn't broken by an untouched Tuesday, because no result is
+                archived for a day the task wasn't due. Same badge and
+                wording TaskCard shows on the habit in the todo. */}
+            {started && streak && (
+              <Badge
+                label={String(streak.current)}
+                icon="flame"
+                tone="accent"
+                outline
+                accessibilityLabel={`Current streak: ${streak.current} scheduled ${
+                  streak.current === 1 ? "day" : "days"
+                } in a row (best ${streak.longest}), counting only ${schedule}`}
+              />
+            )}
+          </View>
+        </Pressable>
+
+        <IconButton
+          icon="ellipsis-horizontal"
+          label={`More actions for ${step.name}`}
+          onPress={openMenu}
+          size="sm"
+          style={styles.more}
+        />
+      </View>
+
+      <ActionSheet
+        visible={menuOpen}
+        title={step.name}
+        subtitle={started ? `${status} · ${schedule}` : status}
+        actions={menuActions}
+        onClose={() => setMenuOpen(false)}
+      />
+    </>
+  );
+}
+
 const styles = StyleSheet.create({
-  centered: {
-    alignItems: "center",
-    paddingVertical: 32,
+  loading: {
+    flex: 0,
+    paddingVertical: spacing.xxxl,
   },
-  loadingText: {
-    marginTop: 8,
-    fontSize: 14,
-    color: "#656d76",
+  card: {
+    marginBottom: spacing.lg,
   },
-  errorBar: {
+  goalHeader: {
     flexDirection: "row",
     alignItems: "center",
+    gap: spacing.sm,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.sm,
+    paddingLeft: spacing.lg,
+    paddingRight: spacing.sm,
+  },
+  goalName: {
+    ...type.headline,
+    flex: 1,
+  },
+  goalActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs,
+  },
+  progress: {
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.md,
+  },
+  progressRow: {
+    flexDirection: "row",
+    alignItems: "baseline",
     justifyContent: "space-between",
-    backgroundColor: "#fef2f2",
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: "#fde8e8",
+    gap: spacing.sm,
+    marginBottom: spacing.xs + 2,
   },
-  errorText: {
-    fontSize: 13,
-    color: "#e74c3c",
+  progressText: {
+    ...type.footnote,
     flex: 1,
-    marginRight: 8,
   },
-  noticeBar: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    backgroundColor: "#f0fdf4",
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: "#bbf7d0",
+  progressPct: {
+    ...type.caption,
+    color: colors.successText,
   },
-  noticeText: {
-    fontSize: 13,
-    color: "#1a7f37",
-    flex: 1,
-    marginRight: 8,
-  },
-  section: {
-    marginBottom: 24,
-    borderWidth: 1,
-    borderColor: "#eaeef2",
-    borderRadius: 10,
-    backgroundColor: "#fff",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
-    overflow: "hidden",
-  },
-  headerRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: "#eaeef2",
-    backgroundColor: "#f6f8fa",
-  },
-  headerName: {
-    flex: 1,
-    fontSize: 18,
-    fontWeight: "600",
-    color: "#1f2328",
-  },
-  headerActions: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 2,
-  },
-  headerBtn: {
-    padding: 6,
-    borderRadius: 6,
-  },
-  progressBadge: {
-    fontSize: 11,
-    fontWeight: "600",
-    color: "#656d76",
-    borderWidth: 1,
-    borderColor: "#d0d7de",
-    borderRadius: 999,
-    paddingVertical: 2,
-    paddingHorizontal: 8,
-    marginRight: 4,
-    overflow: "hidden",
-  },
-  stepList: {
-    paddingHorizontal: 14,
-  },
+  /* Step rows mirror the todo's TaskCard (square checkbox, badges in the
+     ECD slot, trailing "⋯") so the two lists feel identical. */
   stepRow: {
     flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: "#eaeef2",
+    alignItems: "flex-start",
+    paddingVertical: spacing.xs,
+    paddingRight: spacing.xs,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.divider,
+    backgroundColor: colors.surface,
   },
   stepRowLast: {
-    borderBottomWidth: 0,
+    borderBottomLeftRadius: radii.lg,
+    borderBottomRightRadius: radii.lg,
   },
-  /* Step rows mirror the todo's TaskCard styling (square checkbox, inline
-     badge in the ECD slot) so the two lists feel identical. */
-  stepCheckbox: {
-    width: 22,
-    height: 22,
-    borderRadius: 4,
-    borderWidth: 2,
-    borderColor: "#d0d7de",
-    justifyContent: "center",
-    alignItems: "center",
-    marginTop: 2,
+  stepRowPressed: {
+    backgroundColor: colors.surfaceMuted,
   },
-  stepCheckboxChecked: {
-    borderColor: "#6200ee",
-    backgroundColor: "#6200ee",
+  checkbox: {
+    marginLeft: spacing.xs,
   },
   stepBody: {
     flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    flexWrap: "wrap",
-    gap: 6,
+    paddingVertical: spacing.md - 1,
+    paddingRight: spacing.xs,
   },
   stepName: {
-    fontSize: 15,
+    ...type.callout,
     fontWeight: "500",
-    color: "#1f2328",
+    lineHeight: 21,
   },
-  /* Schedule badge + streak sit together in the todo's ECD slot */
-  stepBadgeRow: {
+  /* Status, schedule and streak sit together in the todo's ECD slot */
+  metaRow: {
     flexDirection: "row",
+    flexWrap: "wrap",
     alignItems: "center",
-    gap: 6,
+    gap: spacing.xs + 2,
+    marginTop: spacing.xs + 2,
   },
-  stepBadge: {
-    backgroundColor: "#f0f0f0",
-    borderRadius: 10,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-  },
-  /* Habit streak, counted over the step's own weekdays (see loadStreaks) */
-  streakBadge: {
-    borderWidth: 1,
-    borderColor: "#bc4c00",
-    borderRadius: 10,
-    paddingHorizontal: 7,
-    paddingVertical: 1,
-  },
-  streakText: {
-    fontSize: 11,
-    fontWeight: "600",
-    color: "#bc4c00",
-  },
-  stepBadgeStarted: {
-    backgroundColor: "#e8f0fe",
-  },
-  stepBadgeText: {
-    fontSize: 11,
-    color: "#656d76",
-    fontWeight: "500",
-  },
-  stepBadgeTextStarted: {
-    color: "#1a73e8",
-  },
-  /* Move/delete cluster on a step row, mirroring the todo task actions */
-  stepActions: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 2,
-  },
-  iconBtn: {
-    width: 28,
-    height: 28,
-    justifyContent: "center",
-    alignItems: "center",
-    borderRadius: 6,
-  },
-  busyBtn: {
-    opacity: 0.5,
+  more: {
+    marginTop: spacing.xs + 2,
   },
   noStepsText: {
-    fontSize: 13,
+    ...type.footnote,
     fontStyle: "italic",
-    color: "#656d76",
-    paddingVertical: 10,
-  },
-  emptyText: {
-    textAlign: "center",
-    fontSize: 14,
-    color: "#656d76",
-    paddingVertical: 24,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.divider,
   },
 });

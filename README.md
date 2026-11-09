@@ -14,15 +14,55 @@ Tapping a tab switches to it; re-tapping the already-active tab returns to
 **Todo** (mirrors the web app, where re-clicking an active view button toggles
 back to the todo view).
 
-Every tab's add action is a single **"+" button in the blue title bar**, beside
-the screen title — there are no labelled "+ Add X" buttons. On **Todo** that one
-button follows the view that is showing: it adds a header in the todo and By
-Date lists, a project in Projects, a goal in Goals, an event in Events, a life
+Every tab's add action is a single filled **"+" button beside the large
+screen title** — there are no labelled "+ Add X" buttons. On **Todo** that one
+button follows the view that is showing: it adds a header in the Lists and By
+date views, a project in Projects, a goal in Goals, an event in Events, a life
 event in Life Events, a vacation in Vacation, an on-call shift in On-call,
 and is hidden in Insights
 (nothing to add there).
-**Counter** is the exception — it keeps its original pair of labelled white
-buttons, **Reset** and **+ Add**, stacked at the right of its blue header.
+**Counter** is the exception — it keeps a pair of labelled buttons,
+**Reset** and **+ Add**, at the right of its header (a bare "+" next to a
+tap-to-count pad would read as "count one").
+
+## Design
+
+The app shares one design system (`theme/` tokens + the `components/ui/`
+kit), so every tab looks and behaves the same way:
+
+- **Look** — a calm off-white canvas with white rounded cards, one indigo brand
+  colour for everything you can tap, and a warm saffron accent reserved for
+  practice and progress (the mada beads, habit streaks). Semantic colours mark
+  meaning: red for overdue/destructive, green for done/called, blue for info
+  (vacation).
+- **Headers** — an iOS-style large title on the page background with a
+  one-line summary above it ("Monday, 9 November · 4 due today",
+  "1 of 3 called"), sized to the phone's notch via safe-area insets.
+- **Tab bar** — a floating pill bar; only the active tab shows its name
+  (five full labels don't fit a phone), every tab keeps its full name for
+  screen readers.
+- **Rows** — tap a row to open it (edit), tick its checkbox to complete it,
+  and use its **"⋯" button (or a long press)** for everything else: move up /
+  down, rename, set days, delete. Disabled moves stay visible but greyed out,
+  so the done/undone, started/pending and dated/undated barriers are still
+  explained in place.
+- **Forms are bottom sheets** — they slide up from the bottom (thumb reach),
+  can be dragged down to dismiss, and put Cancel and the main action in large
+  buttons at the bottom. **Irreversible confirmations** (delete, reset) stay
+  centred dialogs on purpose.
+- **Dates read like words** — due chips say *Today*, *Tomorrow* or
+  *Overdue · 11/07* (red); one-time date pickers offer *Today / Tomorrow /
+  Next Mon* shortcuts.
+- **Loading, empty and error states** — skeleton placeholders while loading,
+  an empty state with a one-tap call to action, and a Retry on load failure.
+  Failed actions show a dismissible "Action failed: …" banner.
+- Touch targets are at least 44pt and icon-only controls carry accessible
+  labels.
+
+This look is **mobile-only**: TaskAtHandFE keeps its own design. The small
+behaviours that came with it (tap a row to edit, the date shortcuts, the
+"N due today" summary, the Today/Tomorrow/Overdue chips) are not in the web
+app.
 
 Talks to the deployed TaskAtHandBE API (`https://task-at-hand-be.vercel.app`,
 configured in `api/client.js`).
@@ -36,24 +76,24 @@ configured in `api/client.js`).
   as an abandonment signal; deleting a done task doesn't ask. **Postponing** a
   dated task (editing it to a later date) offers an optional reason field — a
   reason-less postpone is treated as procrastination, a valid reason as a
-  legitimate deferral by the AI coach
-- **Filter toggles**: **By Date** (grouped by calendar date — today first,
-  then past dates, then future dates, with thick dividers between the
-  present, past and future sections), **Insights** (see below),
-  **Events** (see below), **Life Events** (see below), **Goals** (see below),
-  **Projects** (see below), **Vacation** (see below), **On-call** (see
-  below). The panel toggles
-  (everything except By Date)
-  are mutually exclusive: tapping one opens that view and deactivates
-  whichever was open, and tapping the active one returns to the todo list.
-  By Date is a todo-list filter, stays active while a panel is open, and
-  applies again when the panel closes.
+  legitimate deferral by the AI coach. Tap a task to edit it; its "⋯" menu
+  has Edit, Move up, Move down and Delete. A header's "+" adds a task and its
+  "⋯" menu has Rename, Move up, Move down and Delete
+- **Views**: a swipeable chip row under the title — **Tasks**, **Insights**,
+  **Events**, **Life Events**, **Goals**, **Projects**, **Vacation**,
+  **On-call** (each described below). The panels are mutually exclusive:
+  tapping a chip opens that view, and tapping the active chip (or Tasks)
+  returns to the task list. Inside Tasks, a **Lists / By date** toggle
+  switches between the header lists and **By date** (open tasks grouped by
+  calendar date under *Today*, *Overdue* and *Upcoming* labels, recurring
+  tasks surfacing under today when due, "No date" last). By date is
+  independent of the panels and applies again when a panel closes.
 - **Events** — reusable task bundles (e.g. "Burger Night" with its shopping
-  list), shown as an expandable list (same as the web app): each row has the
-  event name, a task count, a one-line preview when collapsed, edit/delete
-  icons and a green "+ Todo" button (the web app's "Add to todo", shortened so
-  long names fit on a phone); tapping a row shows its numbered
-  tasks. The first event starts open, and an event you add or edit opens.
+  list), shown as an expandable list (same as the web app): each card has the
+  event name, a task count and a one-line preview when collapsed; its "⋯"
+  menu has Add to todo, Edit and Delete, and an expanded card shows its
+  numbered tasks and a full-width "Add to todo" button.
+  The first event starts open, and an event you add or edit opens.
   "Add to todo" opens Today / Tomorrow / Saturday date shortcuts and a
   date picker plus a checklist of the event's tasks (all selected by default,
   tap to unmark); confirming adds the selected tasks, dated for the chosen
@@ -62,10 +102,11 @@ configured in `api/client.js`).
   closes the Events panel. Each task row also has a per-task quick add.
   Templates are never consumed, so an event can be scheduled again and again
 - **Life Events** — annually recurring dates (e.g. "Wife's birthday" on
-  7 Mar), listed in priority order with move up/down arrows (a server-side
-  contiguous priority, like headers and projects). Each row shows a done
-  checkbox, the name, the annual date ("↻ 7 Mar") and an "in todo" badge
-  while this year's task is linked. Every year on the event's day, the
+  7 Mar), listed in priority order, moved with Move up/down in each row's "⋯"
+  menu (a server-side contiguous priority, like headers and projects). Each
+  row shows a done checkbox, the name, the annual date as a repeat badge
+  ("7 Mar") and an "in todo" badge while this year's task is linked; tapping
+  a row edits it. Every year on the event's day, the
   **backend cron** adds a one-time date task named after the event to the
   todo under an "Events" header (reused if it already exists) and links it.
   The two views stay in sync both ways: toggling done on either side flips
@@ -88,20 +129,22 @@ configured in `api/client.js`).
   at least one day required) and creates a recurring task on those weekdays
   under a todo header named "One Step At A Time" (reused if it already
   exists), kept for life; unchecking removes that task (the days are kept for
-  the next start) and returns the step to the backlog. An under-progress row
-  also carries a **calendar button** to reschedule the habit later — the only
-  way in, since the todo locks a goal-managed task's schedule — which rewrites
-  the task's ECD to match, and a **streak badge** ("🔥 4") read from
+  the next start) and returns the step to the backlog. An under-progress
+  step's "⋯" menu also has **Set days** to reschedule the habit later — the
+  only way in, since the todo locks a goal-managed task's schedule — which
+  rewrites the task's ECD to match, and the row carries a **streak badge**
+  (a saffron flame with the count) read from
   `GET /insights/stats`. The nightly archive only records a result on days the
   habit is due, so the streak counts scheduled days only: an untouched Tuesday
   can't break a Mon/Wed/Fri habit. **The habit's task in the Todo tab shows
   the same badge** (in the header list and in By Date), so the streak is
   visible where the habit is actually ticked off, not only in the Goals view.
   Only the nightly run moves the number — ticking a habit off today shows up
-  tomorrow. The goal heading's badge (e.g. "1/4 under
-  progress") tracks how many steps are running. Goals are ordered with move up/down arrows on the heading (a
-  server-side contiguous priority, like headers and projects), and each step
-  has its own move up/down and delete — deleting an under-progress step
+  tomorrow. A progress line and bar under the goal name (e.g. "1 of 4 under
+  progress") track how many steps are running. Goals are ordered with Move
+  up/down in the goal's "⋯" menu (a server-side contiguous priority, like
+  headers and projects), and each step's "⋯" menu has its own Move up/down
+  and Delete — deleting an under-progress step
   removes its task too, so the todo never keeps an orphan habit.
   Under-progress steps always sort above the pending backlog (starting a
   step lifts it into the top group) and the move arrows never cross that
@@ -115,8 +158,8 @@ configured in `api/client.js`).
   steps are managed individually afterwards
 - **Projects** — long term projects (e.g. "Automated Stock Market") broken
   into ordered tasks/steps ("get data from EODHD", "get data from Nasdaq",
-  "deploy to cpu"). Projects are ordered with move up/down arrows
-  (header-style priority) and each project's tasks are added, edited,
+  "deploy to cpu"). Projects are ordered with Move up/down in the project's
+  "⋯" menu (header-style priority) and each project's tasks are added, edited,
   reordered, completed and deleted with the same interactions as the todo —
   done tasks always drop to the bottom, **dated tasks always sit above the
   undated ones** (a step with a date is already committed to the todo, so it
@@ -125,7 +168,8 @@ configured in `api/client.js`).
   into the todo as a one-time date task under the project's own header
   (created on demand and kept in the projects' order by the backend), and
   the task's notes are mirrored onto that todo task (an empty note falls back to a
-  "Step towards …" default); the badge (e.g. "1/3 done") tracks completion.
+  "Step towards …" default); a progress line and bar (e.g. "1/3 done") track
+  completion.
   The two views stay in sync both ways: toggling done on
   either side flips the other, editing the todo task's name, date or notes
   updates the project task (clearing the date sets it to none there, and the
@@ -146,8 +190,9 @@ configured in `api/client.js`).
   date, **both inclusive** (the day you leave and the day you get back are both
   vacation days) and both required, which is what lets a trip be booked months
   ahead. Ranges can't overlap; a trip can be edited afterwards (forgot to book
-  it, came home early) or deleted. Rows show the length, whether the trip is
-  past/upcoming/on now, and expand to a **re-date list**: the undone one-time
+  it, came home early) or deleted (tap a row to edit, "⋯" for Edit/Delete).
+  Rows show the length, whether the trip is past/upcoming/on now, and a
+  **Tasks** button expands a **re-date list**: the undone one-time
   dated tasks that fall inside the window, each with a one-tap "Move to <first
   day back>". Those moves are sent with `vacationMove`, so they're never
   counted as postponement — needed because a trip booked in advance is re-dated
@@ -158,8 +203,8 @@ configured in `api/client.js`).
   reminders are silenced** for booked days
 - **On-call** — your on-call shifts (date, start–end, primary or secondary),
   **kept separate: they never change a task**. One agenda of the upcoming
-  shifts (edit/delete, **primary with a solid red edge, secondary a dashed
-  one**, overnight shifts marked "+1") with the **off-call gaps spelled out
+  shifts (tap to edit, "⋯" for Edit/Delete, **primary with a solid red edge,
+  secondary a dashed one**, overnight shifts marked "+1") with the **off-call gaps spelled out
   between them** — "Not on call from Mon 11/16 22:00 to Tue 11/24 09:00 ·
   7d 11h" — instead of paging week by week. Back-to-back or overlapping
   shifts count as one stretch of cover; when you're free right now it opens
@@ -229,15 +274,20 @@ configured in `api/client.js`).
 ```
 Shleeji/
 ├── App.js                     # Bottom-tab navigation (Dream / Affirmations / Todo / Calls / Counter)
+├── theme/index.js             # Design tokens: colours, type ramp, spacing, radii, shadows, tab-bar clearance
 ├── screens/
-│   ├── TodoScreen.js          # Todo tab incl. filter bar + reminder sync
+│   ├── TodoScreen.js          # Todo tab incl. view chips + reminder sync
 │   ├── DreamScreen.js
 │   ├── AffirmationsScreen.js  # Daily affirmations list (backend-synced)
 │   ├── CallsScreen.js         # Biweekly/Monthly call list (backend-synced)
-│   └── CounterScreen.js
+│   └── CounterScreen.js       # Mada counter with the 108-bead ring
 ├── components/
+│   ├── ui/                    # UI kit: Sheet, ActionSheet, Button, IconButton, Checkbox, Chip,
+│   │                          #   SegmentedControl, Badge, Card, ScreenHeader, TextField, Banner,
+│   │                          #   Skeleton, Empty/Loading/Error states, ProgressBar, Avatar
+│   ├── TabBar.js              # Floating tab bar (active tab labelled)
 │   ├── TaskCard.js  AddTaskModal.js  EditTaskModal.js
-│   ├── AddButton.js           # Shared icon-only "+" (sits in the title bar)
+│   ├── AddButton.js           # Shared icon-only "+" (sits beside the screen title)
 │   ├── HeaderModal.js  ConfirmModal.js  EcdPicker.js
 │   ├── AffirmationModal.js    # Add/edit (+ delete) affirmation modal
 │   ├── CallModal.js           # Add/edit call modal (name + biweekly/monthly)
@@ -270,6 +320,8 @@ Shleeji/
     ├── lifeEventSync.js       # life event ↔ todo sync helpers
     ├── oncall.js              # on-call shift maths, quick-add parser, agenda + gap wording (mirrors web utils/oncall.ts)
     └── notifications.js       # 8:30 AM / 4:00 PM daily reminders (silent on vacation days)
+├── __tests__/                 # Jest + React Native Testing Library suites
+└── jest.setup.js              # Global test mocks (AsyncStorage, safe area, icons, keep-awake…)
 ```
 
 ## Running
@@ -279,6 +331,21 @@ npm install
 npm start          # Expo dev server (Expo Go)
 npm run android    # or ios
 ```
+
+## Testing
+
+```bash
+npm test             # run every suite once
+npm run test:watch   # re-run on save
+```
+
+Tests use `jest-expo` and React Native Testing Library and live in
+`__tests__/`: the UI kit, the ECD/date helpers, TaskCard and the task forms,
+every screen (Todo, Dream, Affirmations, Calls, Counter), every Todo panel
+(Insights, Events, Life Events, Goals, Projects, Vacation, On-call) and tab
+navigation. All API modules are mocked per test file, so **tests never
+touch a backend**. They query by role and accessible label, the way a
+screen reader would, so a control without a label fails its test.
 
 ## Builds & Updates (EAS)
 
@@ -315,3 +382,5 @@ npm run publish -- "message" # OTA update to preview branch
 - The Dream tab prevents the phone from auto-locking while it is the active
   tab (`expo-keep-awake`); normal auto-lock resumes as soon as you switch to
   another tab or leave the app.
+- The redesign added no native modules (no new Expo packages), so it ships as
+  an OTA update (`npm run publish`) — no new native build is needed.

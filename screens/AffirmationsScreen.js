@@ -1,18 +1,17 @@
 import React, { useState, useEffect, useCallback } from "react";
-import {
-  StyleSheet,
-  View,
-  Text,
-  TouchableOpacity,
-  ScrollView,
-  ActivityIndicator,
-  RefreshControl,
-  Alert,
-} from "react-native";
+import { StyleSheet, View, Text, Pressable, ScrollView, RefreshControl, Alert } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as affirmationsApi from "../api/affirmations";
 import AddButton from "../components/AddButton";
 import AffirmationModal from "../components/AffirmationModal";
+import {
+  Banner,
+  EmptyState,
+  ErrorState,
+  ScreenHeader,
+  SkeletonList,
+} from "../components/ui";
+import { colors, radii, spacing, tints, useBottomClearance } from "../theme";
 
 export default function AffirmationsScreen() {
   const [affirmations, setAffirmations] = useState([]);
@@ -20,6 +19,7 @@ export default function AffirmationsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
   const [actionError, setActionError] = useState(null);
+  const bottomClearance = useBottomClearance();
 
   // null = closed, { mode: "add" } or { mode: "edit", affirmation }
   const [modalState, setModalState] = useState(null);
@@ -106,87 +106,97 @@ export default function AffirmationsScreen() {
     );
   };
 
+  const openAdd = () => setModalState({ mode: "add" });
+
   /* ── Render ── */
 
   const renderBody = () => {
     if (loading) {
       return (
-        <View style={styles.centered}>
-          <ActivityIndicator size="large" color="#1e88e5" />
-          <Text style={styles.loadingText}>Loading…</Text>
+        <View style={styles.padded}>
+          <SkeletonList groups={3} variant="tiles" />
         </View>
       );
     }
 
     if (error) {
-      return (
-        <View style={styles.centered}>
-          <Ionicons name="alert-circle-outline" size={48} color="#e74c3c" />
-          <Text style={styles.errorTextLarge}>Failed to load: {error}</Text>
-          <Text style={styles.errorHint}>Is the backend running?</Text>
-          <TouchableOpacity style={styles.retryBtn} onPress={loadAll}>
-            <Text style={styles.retryText}>Retry</Text>
-          </TouchableOpacity>
-        </View>
-      );
+      return <ErrorState message={error} onRetry={loadAll} />;
     }
 
     if (affirmations.length === 0 && !actionError) {
       return (
-        <View style={styles.emptyWrap}>
-          <View style={styles.centered}>
-            <Ionicons name="heart-outline" size={80} color="#ccc" />
-            <Text style={styles.emptyText}>No affirmations yet</Text>
-            <Text style={styles.emptySubtext}>
-              Tap the + button to add one to read daily
-            </Text>
-          </View>
-        </View>
+        <EmptyState
+          icon="heart-outline"
+          title="No affirmations yet"
+          message="Add a short line to read every day."
+          actionLabel="Add affirmation"
+          onAction={openAdd}
+          style={{ paddingBottom: bottomClearance }}
+        />
       );
     }
 
     return (
       <ScrollView
-        contentContainerStyle={styles.listContent}
+        contentContainerStyle={[styles.listContent, { paddingBottom: bottomClearance }]}
         showsVerticalScrollIndicator={false}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={colors.primary}
+            colors={[colors.primary]}
+          />
         }
       >
         {actionError && (
-          <View style={styles.actionErrorBar}>
-            <Text style={styles.actionErrorText}>
-              Action failed: {actionError}
-            </Text>
-            <TouchableOpacity onPress={() => setActionError(null)}>
-              <Ionicons name="close" size={18} color="#e74c3c" />
-            </TouchableOpacity>
-          </View>
+          <Banner tone="danger" icon="alert" onDismiss={() => setActionError(null)}>
+            {`Action failed: ${actionError}`}
+          </Banner>
         )}
 
-        {affirmations.map((affirmation) => (
-          <TouchableOpacity
-            key={affirmation._id}
-            style={styles.card}
-            activeOpacity={0.7}
-            onPress={() => setModalState({ mode: "edit", affirmation })}
-          >
-            <Text style={styles.cardText}>{affirmation.name}</Text>
-          </TouchableOpacity>
-        ))}
+        {affirmations.map((affirmation, i) => {
+          const tint = tints[i % tints.length];
+          return (
+            <Pressable
+              key={affirmation._id}
+              onPress={() => setModalState({ mode: "edit", affirmation })}
+              accessibilityRole="button"
+              accessibilityLabel={affirmation.name}
+              accessibilityHint="Opens the affirmation to edit"
+              style={({ pressed }) => [
+                styles.card,
+                { backgroundColor: tint.bg, borderColor: tint.border },
+                pressed && styles.cardPressed,
+              ]}
+            >
+              <Ionicons
+                name="chatbox-ellipses-outline"
+                size={18}
+                color={tint.fg}
+                style={styles.quote}
+              />
+              <Text style={[styles.cardText, { color: colors.text }]}>{affirmation.name}</Text>
+            </Pressable>
+          );
+        })}
       </ScrollView>
     );
   };
 
+  const count = affirmations.length;
+
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.title}>Affirmations</Text>
-        <AddButton
-          label="Add affirmation"
-          onPress={() => setModalState({ mode: "add" })}
-        />
-      </View>
+      <ScreenHeader
+        title="Affirmations"
+        subtitle={
+          !loading && !error && count > 0
+            ? `${count} to read today`
+            : undefined
+        }
+        right={<AddButton label="Add affirmation" onPress={openAdd} />}
+      />
 
       {renderBody()}
 
@@ -206,115 +216,34 @@ export default function AffirmationsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#f0f2f5",
+    backgroundColor: colors.bg,
   },
-  header: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingHorizontal: 24,
-    paddingTop: 54,
-    paddingBottom: 28,
-    backgroundColor: "#1e88e5",
-    elevation: 6,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-  },
-  title: {
-    fontSize: 32,
-    fontWeight: "800",
-    color: "#fff",
-  },
-  emptyWrap: {
-    flex: 1,
-    padding: 16,
-  },
-  centered: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    padding: 24,
-    paddingBottom: 100,
-  },
-  loadingText: {
-    marginTop: 12,
-    fontSize: 16,
-    color: "#656d76",
-  },
-  errorTextLarge: {
-    marginTop: 12,
-    fontSize: 16,
-    color: "#e74c3c",
-    textAlign: "center",
-  },
-  errorHint: {
-    marginTop: 4,
-    fontSize: 14,
-    color: "#999",
-  },
-  retryBtn: {
-    marginTop: 16,
-    paddingVertical: 10,
-    paddingHorizontal: 24,
-    borderRadius: 8,
-    backgroundColor: "#1e88e5",
-  },
-  retryText: {
-    fontSize: 15,
-    fontWeight: "600",
-    color: "#fff",
-  },
-  emptyText: {
-    fontSize: 22,
-    fontWeight: "600",
-    color: "#999",
-    marginTop: 20,
-  },
-  emptySubtext: {
-    fontSize: 16,
-    color: "#bbb",
-    marginTop: 8,
-    textAlign: "center",
+  padded: {
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.xs,
   },
   listContent: {
-    padding: 16,
-    paddingBottom: 120,
-  },
-  actionErrorBar: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    backgroundColor: "#fef2f2",
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: "#fde8e8",
-  },
-  actionErrorText: {
-    fontSize: 13,
-    color: "#e74c3c",
-    flex: 1,
-    marginRight: 8,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.xs,
   },
   card: {
-    backgroundColor: "#fff",
-    borderRadius: 12,
-    paddingVertical: 20,
-    paddingHorizontal: 20,
-    marginBottom: 12,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    borderRadius: radii.xl,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingVertical: spacing.lg + 2,
+    paddingHorizontal: spacing.xl,
+    marginBottom: spacing.md,
+  },
+  cardPressed: {
+    opacity: 0.85,
+    transform: [{ scale: 0.99 }],
+  },
+  quote: {
+    marginBottom: spacing.sm - 2,
   },
   cardText: {
-    fontSize: 19,
+    fontSize: 20,
     lineHeight: 28,
-    fontWeight: "500",
-    color: "#1f2328",
+    fontWeight: "600",
+    letterSpacing: -0.2,
   },
 });

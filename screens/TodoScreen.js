@@ -1,15 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import {
-  StyleSheet,
-  View,
-  Text,
-  TouchableOpacity,
-  ScrollView,
-  ActivityIndicator,
-  RefreshControl,
-  SafeAreaView,
-} from "react-native";
-import { Ionicons } from "@expo/vector-icons";
+import { StyleSheet, View, Text, ScrollView, RefreshControl } from "react-native";
 import * as headersApi from "../api/headers";
 import * as tasksApi from "../api/tasks";
 import TaskCard from "../components/TaskCard";
@@ -24,7 +14,27 @@ import GoalsSection from "../components/GoalsSection";
 import ProjectsSection from "../components/ProjectsSection";
 import VacationSection from "../components/VacationSection";
 import OnCallSection from "../components/OnCallSection";
-import { getEcdDateKey, formatDateKey, todayDateKey } from "../utils/ecd";
+import {
+  ActionSheet,
+  Banner,
+  BannerText,
+  Card,
+  Chip,
+  CountPill,
+  EmptyState,
+  ErrorState,
+  IconButton,
+  ScreenHeader,
+  SegmentedControl,
+  SkeletonList,
+} from "../components/ui";
+import { colors, radii, spacing, type, useBottomClearance } from "../theme";
+import {
+  getEcdDateKey,
+  formatDateKey,
+  todayDateKey,
+  isTaskDueToday,
+} from "../utils/ecd";
 import { syncDailyReminders } from "../utils/notifications";
 import * as vacationsApi from "../api/vacations";
 import * as onCallApi from "../api/oncall";
@@ -48,6 +58,41 @@ import {
   unlinkLifeEventsForTodoTasks,
 } from "../utils/lifeEventSync";
 
+/**
+ * The views reachable from the chip row, in the web FE's toolbar order.
+ * `null` is the task list itself; every other entry is a full panel that
+ * replaces it. Panels are mutually exclusive (one `panel` value), so the
+ * tapped chip is always the view shown, and tapping the active chip again
+ * returns to the list — mirrors web FE App.tsx.
+ */
+export const PANELS = [
+  { key: null, label: "Tasks", icon: "list" },
+  { key: "insights", label: "Insights", icon: "analytics-outline" },
+  { key: "events", label: "Events", icon: "albums-outline" },
+  { key: "lifeEvents", label: "Life Events", icon: "gift-outline" },
+  { key: "goals", label: "Goals", icon: "footsteps-outline" },
+  { key: "projects", label: "Projects", icon: "rocket-outline" },
+  { key: "vacation", label: "Vacation", icon: "sunny-outline" },
+  { key: "onCall", label: "On-call", icon: "notifications-outline" },
+];
+
+const WEEKDAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+const MONTH_NAMES = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
+];
+
+/** "Monday, 9 November" — built by hand so it never depends on Intl. */
+export function todayLine(now = new Date()) {
+  return `${WEEKDAY_NAMES[now.getDay()]}, ${now.getDate()} ${MONTH_NAMES[now.getMonth()]}`;
+}
+
+const BY_DATE_SECTION_LABELS = {
+  present: "Today",
+  past: "Overdue",
+  future: "Upcoming",
+};
+
 export default function TodoScreen() {
   const [headers, setHeaders] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -58,14 +103,12 @@ export default function TodoScreen() {
   // Null while it is loading and after a failed fetch, which just hides them.
   const [streaks, setStreaks] = useState(null);
   const [actionError, setActionError] = useState(null);
+  // By Date is a way of showing the task list (a segmented toggle inside the
+  // Tasks view), not a panel — it stays independent of `panel`.
   const [byDateMode, setByDateMode] = useState(false);
-  const [insightsMode, setInsightsMode] = useState(false);
-  const [eventsMode, setEventsMode] = useState(false);
-  const [lifeEventsMode, setLifeEventsMode] = useState(false);
-  const [goalsMode, setGoalsMode] = useState(false);
-  const [projectsMode, setProjectsMode] = useState(false);
-  const [vacationMode, setVacationMode] = useState(false);
-  const [onCallMode, setOnCallMode] = useState(false);
+  // Which panel replaces the task list: null (the list) or a PANELS key.
+  const [panel, setPanel] = useState(null);
+  const bottomClearance = useBottomClearance();
 
   // On-call shifts are screen-level so the "on call now" banner shows from
   // every view (mirrors the web FE). A record only — never touches tasks.
@@ -80,29 +123,18 @@ export default function TodoScreen() {
   const [vacationStatus, setVacationStatus] = useState(null);
   const [vacations, setVacations] = useState([]);
 
-  // Panel views are mutually exclusive — activating one deactivates the rest,
-  // so the tapped toggle is always the view shown (byDateMode is a todo-list
-  // filter, not a panel, and stays independent). Mirrors web FE App.tsx.
-  const panelModeSetters = [
-    setInsightsMode,
-    setEventsMode,
-    setLifeEventsMode,
-    setGoalsMode,
-    setProjectsMode,
-    setVacationMode,
-    setOnCallMode,
-  ];
-  const togglePanelMode = (setter) => {
-    panelModeSetters.forEach((s) => {
-      if (s !== setter) s(false);
-    });
-    setter((prev) => !prev);
+  // Tapping a chip shows that panel; tapping the active chip (or "Tasks")
+  // returns to the task list.
+  const togglePanel = (key) => {
+    setPanel((prev) => (key === null || prev === key ? null : key));
   };
 
   // Modal states
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [addTaskHeaderId, setAddTaskHeaderId] = useState(null);
   const [headerModalState, setHeaderModalState] = useState(null);
+  // Header whose "⋯" menu is open: { header, idx }
+  const [headerMenu, setHeaderMenu] = useState(null);
 
   // Each panel owns its own add modal, so the title-bar "+" reaches into the
   // one that is showing (see titleBarAdd below).
@@ -112,6 +144,15 @@ export default function TodoScreen() {
   const projectsAddRef = useRef(null);
   const vacationAddRef = useRef(null);
   const onCallAddRef = useRef(null);
+
+  // Keep the active chip scrolled into view (e.g. after the vacation banner
+  // jumps to a chip that is off-screen).
+  const chipScrollRef = useRef(null);
+  const chipX = useRef({});
+  useEffect(() => {
+    const x = chipX.current[panel ?? "tasks"];
+    if (x != null) chipScrollRef.current?.scrollTo({ x: Math.max(0, x - 24), animated: true });
+  }, [panel]);
 
   /* ── Load all headers and their tasks ── */
   const loadAll = useCallback(async () => {
@@ -429,6 +470,7 @@ export default function TodoScreen() {
     }
   };
 
+
   /* ── Render ── */
 
   const addTaskHeader = headers.find((h) => h._id === addTaskHeaderId);
@@ -438,6 +480,7 @@ export default function TodoScreen() {
   const oneStepHeaderIds = new Set(
     headers.filter((h) => isOneStepHeaderName(h.name)).map((h) => h._id),
   );
+
 
   /* ── By Date view: group tasks by calendar date into present, past and
      future sections (today first, then old dates, then future ones) ── */
@@ -491,548 +534,388 @@ export default function TodoScreen() {
     ].filter((section) => section.groups.length > 0);
   })();
 
-  /* The one "+" in the title bar acts on whichever view is showing — same
-     precedence as the render order below. Panels expose their add modal via
-     addRef; Insights has nothing to add, so the button hides there. */
+  /* The one "+" in the title bar acts on whichever view is showing. Panels
+     expose their add modal via addRef; Insights has nothing to add, so the
+     button hides there. */
+  const PANEL_ADD = {
+    events: { label: "Add event", ref: eventsAddRef },
+    lifeEvents: { label: "Add life event", ref: lifeEventsAddRef },
+    goals: { label: "Add goal", ref: goalsAddRef },
+    projects: { label: "Add project", ref: projectsAddRef },
+    vacation: { label: "Add vacation", ref: vacationAddRef },
+    onCall: { label: "Add on-call shift", ref: onCallAddRef },
+  };
   const titleBarAdd = (() => {
-    if (insightsMode) return null;
-    if (eventsMode)
-      return {
-        label: "Add event",
-        onPress: () => eventsAddRef.current?.openAdd(),
-      };
-    if (lifeEventsMode)
-      return {
-        label: "Add life event",
-        onPress: () => lifeEventsAddRef.current?.openAdd(),
-      };
-    if (goalsMode)
-      return {
-        label: "Add goal",
-        onPress: () => goalsAddRef.current?.openAdd(),
-      };
-    if (projectsMode)
-      return {
-        label: "Add project",
-        onPress: () => projectsAddRef.current?.openAdd(),
-      };
-    if (vacationMode)
-      return {
-        label: "Add vacation",
-        onPress: () => vacationAddRef.current?.openAdd(),
-      };
-    if (onCallMode)
-      return {
-        label: "Add on-call shift",
-        onPress: () => onCallAddRef.current?.openAdd(),
-      };
+    if (panel === "insights") return null;
+    if (panel && PANEL_ADD[panel]) {
+      const { label, ref } = PANEL_ADD[panel];
+      return { label, onPress: () => ref.current?.openAdd() };
+    }
     return {
       label: "Add header",
       onPress: () => setHeaderModalState({ mode: "add" }),
     };
   })();
 
-  if (loading) {
-    return (
-      <SafeAreaView style={styles.container}>
-        <View style={styles.centered}>
-          <ActivityIndicator size="large" color="#6200ee" />
-          <Text style={styles.loadingText}>Loading…</Text>
-        </View>
-      </SafeAreaView>
-    );
-  }
+  const dueTodayCount = headers.reduce(
+    (n, h) => n + h.tasks.filter((t) => !t.done && isTaskDueToday(t.ecd)).length,
+    0,
+  );
+  const subtitle = `${todayLine()}${
+    !loading && !error ? ` · ${dueTodayCount} due today` : ""
+  }`;
 
-  if (error) {
+  if (loading || error) {
     return (
-      <SafeAreaView style={styles.container}>
-        <View style={styles.centered}>
-          <Ionicons name="alert-circle-outline" size={48} color="#e74c3c" />
-          <Text style={styles.errorTextLarge}>Failed to load: {error}</Text>
-          <Text style={styles.errorHint}>Is the backend running?</Text>
-          <TouchableOpacity style={styles.retryBtn} onPress={loadAll}>
-            <Text style={styles.retryText}>Retry</Text>
-          </TouchableOpacity>
-        </View>
-      </SafeAreaView>
-    );
-  }
-
-  return (
-    <SafeAreaView style={styles.container}>
-      {/* Title bar - Fixed Header, with the current view's "+" beside the title */}
-      <View style={styles.titleBar}>
-        <Text style={styles.title}>Task At Hand</Text>
-        {titleBarAdd && (
-          <AddButton label={titleBarAdd.label} onPress={titleBarAdd.onPress} />
+      <View style={styles.container}>
+        <ScreenHeader title="Task At Hand" subtitle={todayLine()} />
+        {loading ? (
+          <View style={styles.padded}>
+            <SkeletonList groups={3} rows={3} />
+          </View>
+        ) : (
+          <ErrorState message={error} onRetry={loadAll} />
         )}
       </View>
+    );
+  }
 
-      {/* Filter navbar */}
-      <View style={styles.filterBar}>
-        <TouchableOpacity
-          style={[styles.toggleBtn, byDateMode && styles.toggleBtnActive]}
-          onPress={() => setByDateMode((prev) => !prev)}
-          activeOpacity={0.7}
+  const renderTaskCard = (task, extra) => (
+    <TaskCard
+      key={task._id}
+      task={task}
+      goalManaged={oneStepHeaderIds.has(task.headerId)}
+      streak={
+        oneStepHeaderIds.has(task.headerId)
+          ? streakFor(streaks, task.name)
+          : undefined
+      }
+      onToggleDone={handleToggleDone(task.headerId)}
+      onEdit={handleEditTask(task.headerId)}
+      onMoveUp={handleMoveTaskUp(task.headerId)}
+      onMoveDown={handleMoveTaskDown(task.headerId)}
+      onDelete={handleDeleteTask(task.headerId)}
+      {...extra}
+    />
+  );
+
+  return (
+    <View style={styles.container}>
+      <ScreenHeader
+        title="Task At Hand"
+        subtitle={subtitle}
+        right={
+          titleBarAdd ? (
+            <AddButton label={titleBarAdd.label} onPress={titleBarAdd.onPress} />
+          ) : null
+        }
+      >
+        {/* View chips — one swipeable row instead of a wrapping grid */}
+        <ScrollView
+          ref={chipScrollRef}
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.chipScroll}
+          contentContainerStyle={styles.chipRow}
+          accessibilityRole="tablist"
         >
-          <Ionicons
-            name="calendar-outline"
-            size={16}
-            color={byDateMode ? "#1e88e5" : "#656d76"}
-          />
-          <Text
-            style={[styles.toggleText, byDateMode && styles.toggleTextActive]}
-          >
-            By Date
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.toggleBtn, insightsMode && styles.toggleBtnActive]}
-          onPress={() => togglePanelMode(setInsightsMode)}
-          activeOpacity={0.7}
-        >
-          <Ionicons
-            name="analytics-outline"
-            size={16}
-            color={insightsMode ? "#1e88e5" : "#656d76"}
-          />
-          <Text
-            style={[styles.toggleText, insightsMode && styles.toggleTextActive]}
-          >
-            Insights
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.toggleBtn, eventsMode && styles.toggleBtnActive]}
-          onPress={() => togglePanelMode(setEventsMode)}
-          activeOpacity={0.7}
-        >
-          <Ionicons
-            name="albums-outline"
-            size={16}
-            color={eventsMode ? "#1e88e5" : "#656d76"}
-          />
-          <Text
-            style={[styles.toggleText, eventsMode && styles.toggleTextActive]}
-          >
-            Events
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.toggleBtn, lifeEventsMode && styles.toggleBtnActive]}
-          onPress={() => togglePanelMode(setLifeEventsMode)}
-          activeOpacity={0.7}
-        >
-          <Ionicons
-            name="gift-outline"
-            size={16}
-            color={lifeEventsMode ? "#1e88e5" : "#656d76"}
-          />
-          <Text
-            style={[
-              styles.toggleText,
-              lifeEventsMode && styles.toggleTextActive,
-            ]}
-          >
-            Life Events
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.toggleBtn, goalsMode && styles.toggleBtnActive]}
-          onPress={() => togglePanelMode(setGoalsMode)}
-          activeOpacity={0.7}
-        >
-          <Ionicons
-            name="footsteps-outline"
-            size={16}
-            color={goalsMode ? "#1e88e5" : "#656d76"}
-          />
-          <Text
-            style={[styles.toggleText, goalsMode && styles.toggleTextActive]}
-          >
-            Goals
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.toggleBtn, projectsMode && styles.toggleBtnActive]}
-          onPress={() => togglePanelMode(setProjectsMode)}
-          activeOpacity={0.7}
-        >
-          <Ionicons
-            name="rocket-outline"
-            size={16}
-            color={projectsMode ? "#1e88e5" : "#656d76"}
-          />
-          <Text
-            style={[styles.toggleText, projectsMode && styles.toggleTextActive]}
-          >
-            Projects
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.toggleBtn, vacationMode && styles.toggleBtnActive]}
-          onPress={() => togglePanelMode(setVacationMode)}
-          activeOpacity={0.7}
-        >
-          <Ionicons
-            name="sunny-outline"
-            size={16}
-            color={vacationMode ? "#1e88e5" : "#656d76"}
-          />
-          <Text
-            style={[styles.toggleText, vacationMode && styles.toggleTextActive]}
-          >
-            Vacation
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.toggleBtn, onCallMode && styles.toggleBtnActive]}
-          onPress={() => togglePanelMode(setOnCallMode)}
-          activeOpacity={0.7}
-        >
-          <Ionicons
-            name="notifications-outline"
-            size={16}
-            color={onCallMode ? "#1e88e5" : "#656d76"}
-          />
-          <Text
-            style={[styles.toggleText, onCallMode && styles.toggleTextActive]}
-          >
-            On-call
-          </Text>
-        </TouchableOpacity>
-      </View>
+          {PANELS.map((p) => {
+            const id = p.key ?? "tasks";
+            return (
+              <View
+                key={id}
+                onLayout={(e) => {
+                  chipX.current[id] = e.nativeEvent.layout.x;
+                }}
+              >
+                <Chip
+                  testID={`chip-${id}`}
+                  label={p.label}
+                  icon={p.icon}
+                  selected={panel === p.key}
+                  onPress={() => togglePanel(p.key)}
+                />
+              </View>
+            );
+          })}
+        </ScrollView>
+      </ScreenHeader>
 
       <ScrollView
         style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: bottomClearance }]}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
             onRefresh={onRefresh}
-            tintColor="#fff"
+            tintColor={colors.primary}
+            colors={[colors.primary]}
           />
         }
       >
         {actionError && (
-          <View style={styles.actionErrorBar}>
-            <Text style={styles.actionErrorText}>
-              Action failed: {actionError}
-            </Text>
-            <TouchableOpacity onPress={() => setActionError(null)}>
-              <Ionicons name="close" size={18} color="#e74c3c" />
-            </TouchableOpacity>
-          </View>
+          <Banner tone="danger" icon="alert" onDismiss={() => setActionError(null)}>
+            {`Action failed: ${actionError}`}
+          </Banner>
         )}
 
         {/* Shown in every view *except* the Vacation one, which carries its
             own fuller banner: booking time off and forgetting is the failure
             mode this feature actually has, but two banners stacked on the same
             screen is just noise. */}
-        {vacationStatus?.onVacation && vacationStatus.active && !vacationMode && (
-          <TouchableOpacity
-            style={styles.vacationBanner}
-            activeOpacity={0.7}
+        {vacationStatus?.onVacation && vacationStatus.active && panel !== "vacation" && (
+          <Banner
+            tone="info"
+            icon="sunny"
+            testID="vacation-banner"
             onPress={() => {
-              if (!vacationMode) togglePanelMode(setVacationMode);
+              if (panel !== "vacation") togglePanel("vacation");
             }}
           >
-            <Ionicons name="sunny" size={16} color="#1e88e5" />
-            <Text style={styles.vacationBannerText}>
-              <Text style={styles.vacationBannerStrong}>On vacation</Text> — day{" "}
+            <BannerText>
+              <Text style={styles.bannerStrong}>On vacation</Text> — day{" "}
               {vacationStatus.active.dayOfVacation} of{" "}
               {vacationStatus.active.totalDays}
               {vacationStatus.active.note
                 ? ` · ${vacationStatus.active.note}`
                 : ""}
               . Missed days aren't counted against you.
-            </Text>
-          </TouchableOpacity>
+            </BannerText>
+          </Banner>
         )}
 
-        {/* On call right now — every view, including On-call. Blue like the
-            vacation banner, with a red edge (dashed for secondary). */}
+        {/* On call right now — every view, including On-call. Red edge, dashed
+            for a secondary shift. */}
         {currentShift && (
-          <TouchableOpacity
-            style={[
-              styles.vacationBanner,
-              styles.onCallBanner,
-              currentShift.type === "secondary" && styles.onCallBannerSecondary,
-            ]}
-            activeOpacity={0.7}
-            disabled={onCallMode}
-            onPress={() => togglePanelMode(setOnCallMode)}
+          <Banner
+            tone="alert"
+            icon="notifications"
+            testID="oncall-banner"
+            dashed={currentShift.type === "secondary"}
+            disabled={panel === "onCall"}
+            onPress={() => togglePanel("onCall")}
           >
-            <Ionicons name="notifications" size={16} color="#cf222e" />
-            <Text style={styles.vacationBannerText}>
-              <Text style={[styles.vacationBannerStrong, styles.onCallBannerType]}>
+            <BannerText>
+              <Text style={[styles.bannerStrong, styles.onCallType]}>
                 {currentShift.type === "primary" ? "Primary" : "Secondary"}
               </Text>{" "}
               on call · until{" "}
               {currentShift.end === "24:00" ? "midnight" : currentShift.end} ·{" "}
               {formatDuration(minutesLeft(currentShift, clock))} left
-            </Text>
-          </TouchableOpacity>
+            </BannerText>
+          </Banner>
         )}
 
-        {/* Insights view */}
-        {insightsMode && <InsightsSection />}
+        {panel === "insights" && <InsightsSection />}
 
-        {/* Events view */}
-        {!insightsMode && eventsMode && (
+        {panel === "events" && (
           <EventsSection
             onTasksAdded={loadAll}
-            onViewTodo={() => setEventsMode(false)}
+            onViewTodo={() => setPanel(null)}
             addRef={eventsAddRef}
           />
         )}
 
-        {/* Life Events view */}
-        {!insightsMode && !eventsMode && lifeEventsMode && (
-          <LifeEventsSection
-            onTasksChanged={loadAll}
-            addRef={lifeEventsAddRef}
-          />
+        {panel === "lifeEvents" && (
+          <LifeEventsSection onTasksChanged={loadAll} addRef={lifeEventsAddRef} />
         )}
 
-        {/* Goals view */}
-        {!insightsMode && !eventsMode && !lifeEventsMode && goalsMode && (
+        {panel === "goals" && (
           <GoalsSection onTasksChanged={loadAll} addRef={goalsAddRef} />
         )}
 
-        {/* Projects view */}
-        {!insightsMode &&
-          !eventsMode &&
-          !lifeEventsMode &&
-          !goalsMode &&
-          projectsMode && (
-            <ProjectsSection onTasksChanged={loadAll} addRef={projectsAddRef} />
-          )}
+        {panel === "projects" && (
+          <ProjectsSection onTasksChanged={loadAll} addRef={projectsAddRef} />
+        )}
 
-        {/* Vacation view */}
-        {!insightsMode &&
-          !eventsMode &&
-          !lifeEventsMode &&
-          !goalsMode &&
-          !projectsMode &&
-          !onCallMode &&
-          vacationMode && (
-            <VacationSection
-              addRef={vacationAddRef}
-              onStatusChanged={setVacationStatus}
-              onTasksChanged={async () => {
-                await loadAll();
-                await refreshVacations();
-              }}
-            />
-          )}
+        {panel === "vacation" && (
+          <VacationSection
+            addRef={vacationAddRef}
+            onStatusChanged={setVacationStatus}
+            onTasksChanged={async () => {
+              await loadAll();
+              await refreshVacations();
+            }}
+          />
+        )}
 
-        {/* On-call view */}
-        {onCallMode && (
+        {panel === "onCall" && (
           <OnCallSection addRef={onCallAddRef} onShiftsChanged={refreshOnCall} />
         )}
 
+        {panel === null && (
+          <SegmentedControl
+            testID="list-mode"
+            style={styles.segmented}
+            value={byDateMode ? "date" : "lists"}
+            onChange={(v) => setByDateMode(v === "date")}
+            options={[
+              { value: "lists", label: "Lists", icon: "list-outline" },
+              { value: "date", label: "By date", icon: "calendar-outline" },
+            ]}
+          />
+        )}
+
         {/* Headers */}
-        {!insightsMode &&
-          !eventsMode &&
-          !lifeEventsMode &&
-          !goalsMode &&
-          !projectsMode &&
-          !vacationMode &&
-          !onCallMode &&
+        {panel === null &&
           !byDateMode &&
           headers.map((header, idx) => {
             const visibleTasks = header.tasks;
+            const openCount = visibleTasks.filter((t) => !t.done).length;
 
             return (
-              <View key={header._id} style={styles.section}>
-                {/* Header heading */}
+              <Card key={header._id} padded={false} style={styles.section}>
                 <View style={styles.headerRow}>
-                  <Text style={styles.headerName} numberOfLines={1}>
+                  <Text style={styles.headerName} numberOfLines={2} accessibilityRole="header">
                     {header.name}
                   </Text>
-                  <View style={styles.headerActions}>
-                    <TouchableOpacity
-                      style={[
-                        styles.headerBtn,
-                        idx === 0 && styles.headerBtnDisabled,
-                      ]}
-                      onPress={() => handleMoveHeaderUp(header._id)}
-                      disabled={idx === 0}
-                    >
-                      <Ionicons
-                        name="arrow-up"
-                        size={16}
-                        color={idx === 0 ? "#ccc" : "#656d76"}
-                      />
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={[
-                        styles.headerBtn,
-                        idx === headers.length - 1 && styles.headerBtnDisabled,
-                      ]}
-                      onPress={() => handleMoveHeaderDown(header._id)}
-                      disabled={idx === headers.length - 1}
-                    >
-                      <Ionicons
-                        name="arrow-down"
-                        size={16}
-                        color={idx === headers.length - 1 ? "#ccc" : "#656d76"}
-                      />
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={styles.headerBtn}
-                      onPress={() =>
-                        setHeaderModalState({
-                          mode: "edit",
-                          headerId: header._id,
-                          name: header.name,
-                        })
-                      }
-                    >
-                      <Ionicons name="pencil" size={16} color="#656d76" />
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={styles.headerBtn}
-                      onPress={() =>
-                        setDeleteTarget({
-                          type: "header",
-                          headerId: header._id,
-                          id: header._id,
-                          name: header.name,
-                        })
-                      }
-                    >
-                      <Ionicons
-                        name="trash-outline"
-                        size={16}
-                        color="#e74c3c"
-                      />
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={styles.headerBtn}
-                      onPress={() => setAddTaskHeaderId(header._id)}
-                    >
-                      <Ionicons name="add" size={18} color="#6200ee" />
-                    </TouchableOpacity>
-                  </View>
+                  <CountPill count={openCount} />
+                  <IconButton
+                    icon="add"
+                    label={`Add task to ${header.name}`}
+                    color={colors.primary}
+                    onPress={() => setAddTaskHeaderId(header._id)}
+                  />
+                  <IconButton
+                    icon="ellipsis-horizontal"
+                    label={`More actions for ${header.name}`}
+                    onPress={() => setHeaderMenu({ header, idx })}
+                  />
                 </View>
 
-                {/* Task list */}
-                <View style={styles.taskList}>
-                  {visibleTasks.map((task, taskIdx) => (
-                    <TaskCard
-                      key={task._id}
-                      task={task}
-                      isFirst={taskIdx === 0}
-                      isLast={taskIdx === visibleTasks.length - 1}
-                      prevTaskDone={
-                        taskIdx > 0 ? visibleTasks[taskIdx - 1].done : undefined
-                      }
-                      nextTaskDone={
-                        taskIdx < visibleTasks.length - 1
-                          ? visibleTasks[taskIdx + 1].done
-                          : undefined
-                      }
-                      goalManaged={oneStepHeaderIds.has(header._id)}
-                      streak={
-                        oneStepHeaderIds.has(header._id)
-                          ? streakFor(streaks, task.name)
-                          : undefined
-                      }
-                      onToggleDone={handleToggleDone(header._id)}
-                      onEdit={handleEditTask(header._id)}
-                      onMoveUp={handleMoveTaskUp(header._id)}
-                      onMoveDown={handleMoveTaskDown(header._id)}
-                      onDelete={handleDeleteTask(header._id)}
-                    />
-                  ))}
-                  {visibleTasks.length === 0 && (
-                    <Text style={styles.emptyText}>
-                      No tasks yet — add one!
-                    </Text>
-                  )}
-                </View>
-              </View>
+                {visibleTasks.map((task, taskIdx) =>
+                  renderTaskCard(task, {
+                    goalManaged: oneStepHeaderIds.has(header._id),
+                    streak: oneStepHeaderIds.has(header._id)
+                      ? streakFor(streaks, task.name)
+                      : undefined,
+                    isFirst: taskIdx === 0,
+                    isLast: taskIdx === visibleTasks.length - 1,
+                    prevTaskDone: taskIdx > 0 ? visibleTasks[taskIdx - 1].done : undefined,
+                    nextTaskDone:
+                      taskIdx < visibleTasks.length - 1
+                        ? visibleTasks[taskIdx + 1].done
+                        : undefined,
+                    onToggleDone: handleToggleDone(header._id),
+                    onEdit: handleEditTask(header._id),
+                    onMoveUp: handleMoveTaskUp(header._id),
+                    onMoveDown: handleMoveTaskDown(header._id),
+                    onDelete: handleDeleteTask(header._id),
+                  }),
+                )}
+                {visibleTasks.length === 0 && (
+                  <Text style={styles.emptyText}>No tasks yet — add one!</Text>
+                )}
+              </Card>
             );
           })}
 
-        {!insightsMode &&
-          !eventsMode &&
-          !lifeEventsMode &&
-          !goalsMode &&
-          !projectsMode &&
-          !vacationMode &&
-          !onCallMode &&
-          !byDateMode &&
-          headers.length === 0 && (
-            <Text style={styles.emptyText}>No headers yet — add one!</Text>
-          )}
+        {panel === null && !byDateMode && headers.length === 0 && (
+          <EmptyState
+            compact
+            icon="file-tray-outline"
+            title="No headers yet — add one!"
+            message="Headers group related tasks, like Work or Home."
+            actionLabel="Add header"
+            onAction={() => setHeaderModalState({ mode: "add" })}
+          />
+        )}
 
         {/* By Date view: present, past and future sections headed by date,
-            separated by thick dividers */}
-        {!insightsMode &&
-          !eventsMode &&
-          !lifeEventsMode &&
-          !goalsMode &&
-          !projectsMode &&
-          !vacationMode &&
-          !onCallMode &&
+            separated by labelled dividers */}
+        {panel === null &&
           byDateMode &&
-          byDateSections.map((section, sectionIdx) => (
+          byDateSections.map((section) => (
             <React.Fragment key={section.key}>
-              {sectionIdx > 0 && <View style={styles.byDateDivider} />}
+              <View style={styles.byDateDivider}>
+                <Text
+                  style={[
+                    styles.byDateDividerText,
+                    section.key === "past" && { color: colors.dangerText },
+                    section.key === "present" && { color: colors.primaryText },
+                  ]}
+                >
+                  {BY_DATE_SECTION_LABELS[section.key]}
+                </Text>
+                <View style={styles.byDateDividerLine} />
+              </View>
               {section.groups.map((group) => (
-                <View key={group.key} style={styles.section}>
+                <Card key={group.key} padded={false} style={styles.section}>
                   <View style={styles.headerRow}>
                     <Text style={styles.headerName} numberOfLines={1}>
                       {group.label}
                     </Text>
+                    <CountPill count={group.tasks.length} style={styles.groupCount} />
                   </View>
-                  <View style={styles.taskList}>
-                    {group.tasks.map((task) => (
-                      <TaskCard
-                        key={task._id}
-                        task={task}
-                        isFirst
-                        isLast
-                        goalManaged={oneStepHeaderIds.has(task.headerId)}
-                        streak={
-                          oneStepHeaderIds.has(task.headerId)
-                            ? streakFor(streaks, task.name)
-                            : undefined
-                        }
-                        onToggleDone={handleToggleDone(task.headerId)}
-                        onEdit={handleEditTask(task.headerId)}
-                        onMoveUp={handleMoveTaskUp(task.headerId)}
-                        onMoveDown={handleMoveTaskDown(task.headerId)}
-                        onDelete={handleDeleteTask(task.headerId)}
-                      />
-                    ))}
-                  </View>
-                </View>
+                  {group.tasks.map((task) =>
+                    renderTaskCard(task, { isFirst: true, isLast: true }),
+                  )}
+                </Card>
               ))}
             </React.Fragment>
           ))}
-        {!insightsMode &&
-          !eventsMode &&
-          !lifeEventsMode &&
-          !goalsMode &&
-          !projectsMode &&
-          !vacationMode &&
-          !onCallMode &&
-          byDateMode &&
-          byDateSections.length === 0 && (
-            <Text style={styles.emptyText}>No dated tasks to show.</Text>
-          )}
-
-        {/* Bottom spacer for tab bar */}
-        <View style={{ height: 120 }} />
+        {panel === null && byDateMode && byDateSections.length === 0 && (
+          <EmptyState compact icon="calendar-outline" title="No dated tasks to show." />
+        )}
       </ScrollView>
+
+      {/* Header "⋯" menu — rename, reorder, delete */}
+      <ActionSheet
+        visible={!!headerMenu}
+        title={headerMenu?.header.name}
+        subtitle="Header"
+        onClose={() => setHeaderMenu(null)}
+        actions={
+          headerMenu
+            ? [
+                {
+                  key: "rename",
+                  label: "Rename header",
+                  icon: "pencil",
+                  onPress: () =>
+                    setHeaderModalState({
+                      mode: "edit",
+                      headerId: headerMenu.header._id,
+                      name: headerMenu.header.name,
+                    }),
+                },
+                {
+                  key: "up",
+                  label: "Move up",
+                  icon: "arrow-up",
+                  disabled: headerMenu.idx === 0,
+                  onPress: () => handleMoveHeaderUp(headerMenu.header._id),
+                },
+                {
+                  key: "down",
+                  label: "Move down",
+                  icon: "arrow-down",
+                  disabled: headerMenu.idx === headers.length - 1,
+                  onPress: () => handleMoveHeaderDown(headerMenu.header._id),
+                },
+                {
+                  key: "delete",
+                  label: "Delete header",
+                  icon: "trash-outline",
+                  destructive: true,
+                  hint: "Deletes all of its tasks too",
+                  onPress: () =>
+                    setDeleteTarget({
+                      type: "header",
+                      headerId: headerMenu.header._id,
+                      id: headerMenu.header._id,
+                      name: headerMenu.header.name,
+                    }),
+                },
+              ]
+            : []
+        }
+      />
 
       {/* Modals */}
       <ConfirmModal
         visible={!!deleteTarget}
+        title={deleteTarget?.type === "header" ? "Delete header?" : "Delete task?"}
         message={
           deleteTarget?.type === "header"
             ? `Delete header "${deleteTarget?.name}" and all its tasks?`
@@ -1066,201 +949,87 @@ export default function TodoScreen() {
         }
         onCancel={() => setHeaderModalState(null)}
       />
-    </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#f0f2f5",
+    backgroundColor: colors.bg,
   },
-  centered: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 24,
+  padded: {
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.xs,
   },
-  loadingText: {
-    marginTop: 12,
-    fontSize: 16,
-    color: "#656d76",
+  chipScroll: {
+    marginHorizontal: -spacing.xl,
+    marginTop: spacing.md,
   },
-  errorTextLarge: {
-    marginTop: 12,
-    fontSize: 16,
-    color: "#e74c3c",
-    textAlign: "center",
-  },
-  errorHint: {
-    marginTop: 4,
-    fontSize: 14,
-    color: "#656d76",
-  },
-  retryBtn: {
-    marginTop: 16,
-    paddingVertical: 10,
-    paddingHorizontal: 24,
-    backgroundColor: "#6200ee",
-    borderRadius: 8,
-  },
-  retryText: {
-    color: "#fff",
-    fontWeight: "600",
-    fontSize: 15,
+  chipRow: {
+    paddingHorizontal: spacing.xl,
+    gap: spacing.sm,
   },
   scrollView: {
     flex: 1,
   },
   scrollContent: {
-    padding: 16,
-    paddingTop: 12,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.xs,
   },
-  titleBar: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingHorizontal: 24,
-    paddingTop: 54,
-    paddingBottom: 28,
-    backgroundColor: "#1e88e5",
-    elevation: 6,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
+  segmented: {
+    marginBottom: spacing.md,
   },
-  title: {
-    fontSize: 32,
-    fontWeight: "800",
-    color: "#fff",
+  bannerStrong: {
+    fontWeight: "700",
   },
-  filterBar: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: "#fff",
-    borderBottomWidth: 1,
-    borderBottomColor: "#eaeef2",
-  },
-  toggleBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    backgroundColor: "#f6f8fa",
-    paddingVertical: 8,
-    paddingHorizontal: 14,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: "#d0d7de",
-  },
-  toggleBtnActive: {
-    backgroundColor: "#e3f2fd",
-    borderColor: "#1e88e5",
-  },
-  toggleText: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#656d76",
-  },
-  toggleTextActive: {
-    color: "#1e88e5",
-  },
-  vacationBanner: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    backgroundColor: "#eef6fd",
-    borderWidth: 1,
-    borderColor: "#c5dcf5",
-    borderLeftWidth: 4,
-    borderLeftColor: "#1e88e5",
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 16,
-  },
-  vacationBannerText: {
-    flex: 1,
-    fontSize: 13,
-    color: "#1f2328",
-    lineHeight: 19,
-  },
-  vacationBannerStrong: { fontWeight: "700" },
-  onCallBanner: { borderLeftColor: "#cf222e" },
-  onCallBannerSecondary: { borderStyle: "dashed" },
-  onCallBannerType: { color: "#cf222e" },
-  actionErrorBar: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    backgroundColor: "#fef2f2",
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: "#fde8e8",
-  },
-  actionErrorText: {
-    fontSize: 13,
-    color: "#e74c3c",
-    flex: 1,
-    marginRight: 8,
+  onCallType: {
+    color: colors.dangerText,
   },
   byDateDivider: {
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: "#d0d7de",
-    marginBottom: 24,
-    marginTop: 4,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    marginTop: spacing.xs,
+    marginBottom: spacing.md,
+    paddingHorizontal: spacing.xs,
+  },
+  byDateDividerText: {
+    ...type.overline,
+    color: colors.textSecondary,
+  },
+  byDateDividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: colors.border,
   },
   section: {
-    marginBottom: 24,
-    borderWidth: 1,
-    borderColor: "#eaeef2",
-    borderRadius: 10,
-    backgroundColor: "#fff",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
+    marginBottom: spacing.md,
     overflow: "hidden",
+    borderRadius: radii.lg,
   },
   headerRow: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: "#eaeef2",
-    backgroundColor: "#f6f8fa",
+    gap: spacing.xs,
+    paddingLeft: spacing.lg,
+    paddingRight: spacing.xs,
+    paddingVertical: spacing.xs,
+    minHeight: 52,
   },
   headerName: {
+    ...type.headline,
     flex: 1,
-    fontSize: 18,
-    fontWeight: "600",
-    color: "#1f2328",
   },
-  headerActions: {
-    flexDirection: "row",
-    gap: 2,
-  },
-  headerBtn: {
-    padding: 6,
-    borderRadius: 6,
-  },
-  headerBtnDisabled: {
-    opacity: 0.4,
-  },
-  taskList: {
-    paddingHorizontal: 6,
+  groupCount: {
+    marginRight: spacing.md,
   },
   emptyText: {
+    ...type.subhead,
+    color: colors.textTertiary,
     textAlign: "center",
-    fontSize: 14,
-    color: "#656d76",
-    paddingVertical: 24,
+    paddingVertical: spacing.xl,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.divider,
   },
 });

@@ -1,20 +1,13 @@
 import React, { useState, useRef, useEffect } from "react";
-import {
-  Modal,
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  StyleSheet,
-  ScrollView,
-  KeyboardAvoidingView,
-  Platform,
-} from "react-native";
-import EcdPicker from "./EcdPicker";
+import { Text, StyleSheet } from "react-native";
+import EcdPicker, { formatDateToISO } from "./EcdPicker";
+import { Sheet, SheetActions, Button, TextField } from "./ui";
 import { buildEcdFromInputs } from "../utils/ecd";
+import { colors, spacing, type } from "../theme";
 
 function todayInputVal() {
-  return new Date().toISOString().slice(0, 10);
+  // Local calendar date — toISOString() is UTC and reads as tomorrow in the evening
+  return formatDateToISO(new Date());
 }
 
 function todayDMY() {
@@ -48,7 +41,7 @@ export default function AddTaskModal({
       setDomVal([1]);
       setYearVal(todayDMY());
       setFormError(null);
-      setTimeout(() => nameRef.current?.focus(), 100);
+      setTimeout(() => nameRef.current?.focus(), 250);
     }
   }, [visible]);
 
@@ -72,184 +65,68 @@ export default function AddTaskModal({
   }
 
   return (
-    <Modal
+    <Sheet
       visible={visible}
-      transparent
-      animationType="fade"
-      onRequestClose={onCancel}
+      onClose={onCancel}
+      title="Add task"
+      subtitle={headerName ? `in ${headerName}` : undefined}
+      footer={
+        <SheetActions>
+          <Button title="Cancel" variant="secondary" size="lg" onPress={onCancel} style={{ flex: 1 }} />
+          <Button
+            title="Add task"
+            size="lg"
+            onPress={handleAdd}
+            disabled={!name.trim()}
+            style={{ flex: 2 }}
+          />
+        </SheetActions>
+      }
     >
-      <TouchableOpacity
-        style={styles.overlay}
-        activeOpacity={1}
-        onPress={onCancel}
-      >
-        <KeyboardAvoidingView
-          behavior={Platform.OS === "ios" ? "padding" : "height"}
-          style={styles.keyboardView}
-        >
-          <TouchableOpacity
-            activeOpacity={1}
-            onPress={(e) => e.stopPropagation()}
-          >
-            <View style={styles.modal}>
-              <ScrollView showsVerticalScrollIndicator={false}>
-                <Text style={styles.title}>
-                  Add task{" "}
-                  <Text style={styles.titleFolder}>— {headerName}</Text>
-                </Text>
+      {formError && <Text style={styles.errorText}>{formError}</Text>}
 
-                {formError && <Text style={styles.errorText}>{formError}</Text>}
+      <TextField
+        ref={nameRef}
+        label="Task name"
+        placeholder="Draft OKRs for Q1"
+        value={name}
+        onChangeText={setName}
+        returnKeyType="next"
+      />
 
-                <TextInput
-                  ref={nameRef}
-                  style={styles.nameInput}
-                  placeholder="Task name…"
-                  placeholderTextColor="#999"
-                  value={name}
-                  onChangeText={setName}
-                  returnKeyType="next"
-                />
+      <EcdPicker
+        mode={mode}
+        setMode={setMode}
+        dateVal={dateVal}
+        setDateVal={setDateVal}
+        dowVal={dowVal}
+        setDowVal={setDowVal}
+        domVal={domVal}
+        setDomVal={setDomVal}
+        yearVal={yearVal}
+        setYearVal={setYearVal}
+      />
 
-                <EcdPicker
-                  mode={mode}
-                  setMode={setMode}
-                  dateVal={dateVal}
-                  setDateVal={setDateVal}
-                  dowVal={dowVal}
-                  setDowVal={setDowVal}
-                  domVal={domVal}
-                  setDomVal={setDomVal}
-                  yearVal={yearVal}
-                  setYearVal={setYearVal}
-                />
-
-                <TextInput
-                  style={styles.notesInput}
-                  value={notes}
-                  onChangeText={setNotes}
-                  placeholder="Notes (optional)…"
-                  placeholderTextColor="#999"
-                  multiline
-                  numberOfLines={4}
-                  textAlignVertical="top"
-                />
-
-                <View style={styles.actions}>
-                  <TouchableOpacity style={styles.cancelBtn} onPress={onCancel}>
-                    <Text style={styles.cancelText}>Cancel</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[
-                      styles.confirmBtn,
-                      !name.trim() && styles.disabledBtn,
-                    ]}
-                    onPress={handleAdd}
-                    disabled={!name.trim()}
-                  >
-                    <Text style={styles.confirmText}>Add task</Text>
-                  </TouchableOpacity>
-                </View>
-              </ScrollView>
-            </View>
-          </TouchableOpacity>
-        </KeyboardAvoidingView>
-      </TouchableOpacity>
-    </Modal>
+      <TextField
+        label="Notes"
+        value={notes}
+        onChangeText={setNotes}
+        placeholder="Optional"
+        multiline
+        minHeight={88}
+      />
+    </Sheet>
   );
 }
 
 const styles = StyleSheet.create({
-  overlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.5)",
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 16,
-  },
-  keyboardView: {
-    width: "100%",
-    alignItems: "center",
-  },
-  modal: {
-    backgroundColor: "#fff",
-    borderRadius: 12,
-    padding: 24,
-    width: 360,
-    maxWidth: "95%",
-    maxHeight: "90%",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
-    elevation: 8,
-  },
-  title: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: "#1f2328",
-    marginBottom: 16,
-  },
-  titleFolder: {
-    fontWeight: "400",
-    color: "#656d76",
-    fontSize: 15,
-  },
   errorText: {
-    color: "#e74c3c",
-    fontSize: 13,
-    marginBottom: 10,
-  },
-  nameInput: {
-    borderWidth: 1,
-    borderColor: "#d0d7de",
-    borderRadius: 8,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    fontSize: 16,
-    color: "#1f2328",
-    marginBottom: 16,
-    backgroundColor: "#fafafa",
-  },
-  notesInput: {
-    borderWidth: 1,
-    borderColor: "#d0d7de",
-    borderRadius: 8,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    fontSize: 15,
-    color: "#1f2328",
-    minHeight: 80,
-    backgroundColor: "#fafafa",
-    marginBottom: 20,
-  },
-  actions: {
-    flexDirection: "row",
-    justifyContent: "flex-end",
-    gap: 10,
-  },
-  cancelBtn: {
-    paddingVertical: 10,
-    paddingHorizontal: 18,
-    borderRadius: 8,
-    backgroundColor: "#f0f0f0",
-  },
-  cancelText: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#555",
-  },
-  confirmBtn: {
-    paddingVertical: 10,
-    paddingHorizontal: 18,
-    borderRadius: 8,
-    backgroundColor: "#6200ee",
-  },
-  disabledBtn: {
-    opacity: 0.5,
-  },
-  confirmText: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#fff",
+    ...type.footnote,
+    color: colors.dangerText,
+    backgroundColor: colors.dangerSoft,
+    padding: spacing.sm + 2,
+    borderRadius: 10,
+    marginBottom: spacing.md,
+    overflow: "hidden",
   },
 });

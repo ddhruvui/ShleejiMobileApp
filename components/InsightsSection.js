@@ -1,13 +1,19 @@
 import React, { useState, useEffect, useCallback } from "react";
-import {
-  StyleSheet,
-  View,
-  Text,
-  TouchableOpacity,
-  ActivityIndicator,
-} from "react-native";
+import { StyleSheet, View, Text } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as insightsApi from "../api/insights";
+import {
+  Badge,
+  Banner,
+  BannerText,
+  Button,
+  Card,
+  EmptyState,
+  LoadingState,
+  ProgressBar,
+  SectionHeader,
+} from "./ui";
+import { colors, spacing, type } from "../theme";
 
 /**
  * Insights view: exact habit/task stats from the archive, plus the latest
@@ -57,12 +63,7 @@ export default function InsightsSection() {
   };
 
   if (loading) {
-    return (
-      <View style={styles.centered}>
-        <ActivityIndicator size="small" color="#6200ee" />
-        <Text style={styles.emptyText}>Loading insights…</Text>
-      </View>
-    );
+    return <LoadingState label="Loading insights…" style={styles.loading} />;
   }
 
   const hasArchiveData = stats && stats.eventCount > 0;
@@ -73,9 +74,9 @@ export default function InsightsSection() {
   return (
     <View>
       {error && (
-        <View style={styles.errorBar}>
-          <Text style={styles.errorText}>Insights error: {error}</Text>
-        </View>
+        <Banner tone="danger" icon="alert" onDismiss={() => setError(null)}>
+          {`Insights error: ${error}`}
+        </Banner>
       )}
 
       {/* ── Vacation notice ──
@@ -83,25 +84,25 @@ export default function InsightsSection() {
           why nothing moved, and excluded days explain a denominator that
           shrank. */}
       {onVacation && (
-        <View style={styles.vacationNote}>
-          <Text style={styles.vacationNoteText}>
-            <Text style={styles.vacationNoteStrong}>You're on vacation.</Text>{" "}
-            These numbers are as of {vacation.frozenAt ?? "before you left"} and
-            stay put until you're back — days off aren't counted against you,
-            and coach reports are paused. Anything you do tick off still counts
-            and will show up when you return.
-          </Text>
-        </View>
+        <Banner tone="info" icon="sunny">
+          <BannerText>
+            <Text style={styles.strong}>You're on vacation.</Text> These
+            numbers are as of {vacation.frozenAt ?? "before you left"} and stay
+            put until you're back — days off aren't counted against you, and
+            coach reports are paused. Anything you do tick off still counts and
+            will show up when you return.
+          </BannerText>
+        </Banner>
       )}
       {!onVacation && vacation?.justReturnedFrom && (
-        <View style={styles.vacationNote}>
-          <Text style={styles.vacationNoteText}>
-            <Text style={styles.vacationNoteStrong}>Welcome back.</Text> You
-            were away {vacation.justReturnedFrom.days} day
-            {vacation.justReturnedFrom.days === 1 ? "" : "s"} — those days don't
-            count as misses, and habit streaks start fresh from here.
-          </Text>
-        </View>
+        <Banner tone="info" icon="home">
+          <BannerText>
+            <Text style={styles.strong}>Welcome back.</Text> You were away{" "}
+            {vacation.justReturnedFrom.days} day
+            {vacation.justReturnedFrom.days === 1 ? "" : "s"} — those days
+            don't count as misses, and habit streaks start fresh from here.
+          </BannerText>
+        </Banner>
       )}
       {!onVacation && vacation?.vacationDaysInWindow > 0 && (
         <Text style={styles.vacationHint}>
@@ -113,165 +114,113 @@ export default function InsightsSection() {
 
       {/* ── Habits ── */}
       <View style={styles.section}>
-        <View style={styles.headerRow}>
-          <Text style={styles.headerName}>Habits</Text>
-        </View>
-        <View style={styles.sectionBody}>
-          {stats && stats.habits.length > 0 ? (
-            stats.habits.map((h) => (
-              <View
-                key={`${h.taskName}-${h.headerName}`}
-                style={styles.habitCard}
-              >
-                <View style={styles.habitTitleRow}>
-                  <Text style={styles.habitTitle} numberOfLines={1}>
-                    {h.taskName}
-                  </Text>
-                  <Text style={styles.habitHeader}>{h.headerName || ""}</Text>
-                </View>
-                <Text style={styles.habitRate}>
-                  {h.completionRate}%{"  "}
-                  <Text style={styles.habitDetail}>
-                    {h.completed}/{h.scheduled} · streak {h.currentStreak}{" "}
-                    (best {h.longestStreak})
-                  </Text>
-                </Text>
-                {/* All-time count, deliberately separate from the windowed
-                    figures above — it ignores the reporting period entirely. */}
-                {h.lifetimeCompleted !== undefined && (
-                  <Text style={styles.habitLifetime}>
-                    Done {h.lifetimeCompleted} time
-                    {h.lifetimeCompleted === 1 ? "" : "s"} all-time
-                  </Text>
-                )}
-                {h.pausedDays > 0 && (
-                  <Text style={styles.habitPaused}>
-                    {h.pausedDays} vacation day
-                    {h.pausedDays === 1 ? "" : "s"} excluded
-                  </Text>
-                )}
-                <View style={styles.dotRow}>
-                  {h.recentResults.map((r) => {
-                    // Three states, not two: a vacation day the user didn't act
-                    // on is neither a hit nor a miss. Drawing it as a miss would
-                    // make the excluded day look like a failure; dropping it
-                    // would make the streak restart look like a bug.
-                    const paused = !r.completed && r.vacation;
-                    return (
-                      <View
-                        key={r.dueDate}
-                        style={[
-                          styles.dot,
-                          r.completed
-                            ? styles.dotHit
-                            : paused
-                              ? styles.dotPaused
-                              : styles.dotMiss,
-                        ]}
-                      />
-                    );
-                  })}
-                </View>
-              </View>
-            ))
-          ) : (
-            <Text style={styles.emptyText}>
-              No habit history yet. Habits are tasks scheduled by day of week —
-              results are recorded each night.
-            </Text>
-          )}
-        </View>
+        <SectionHeader title="Habits" />
+        {stats && stats.habits.length > 0 ? (
+          stats.habits.map((h) => (
+            <HabitCard key={`${h.taskName}-${h.headerName}`} habit={h} />
+          ))
+        ) : (
+          <Card padded={false}>
+            <EmptyState
+              compact
+              icon="repeat"
+              title="No habit history yet"
+              message="Habits are tasks scheduled by day of week — results are recorded each night."
+            />
+          </Card>
+        )}
       </View>
 
       {/* ── Tasks ── */}
       <View style={styles.section}>
-        <View style={styles.headerRow}>
-          <Text style={styles.headerName}>Tasks</Text>
-        </View>
-        <View style={styles.sectionBody}>
-          {hasArchiveData ? (
-            <>
-              <Text style={styles.bodyText}>
-                <Text style={styles.bold}>
-                  {stats.oneTimeTasks.completedCount}
-                </Text>{" "}
-                one-time tasks completed in the last {stats.periodDays} days
-                {/* On or before the planned date is a win — shown first, and
-                    the slip line only appears when something was actually
-                    late. Older backends don't send the counts, hence the
-                    guard. Mirrors the web FE's InsightsPanel. */}
-                {stats.oneTimeTasks.onTimeCount !== undefined && (
-                  <>
-                    {" "}
-                    ·{" "}
-                    <Text style={styles.bold}>
-                      {stats.oneTimeTasks.onTimeCount}
-                    </Text>{" "}
-                    on or before the planned date
-                  </>
-                )}
-                {stats.oneTimeTasks.avgSlippageDays !== null &&
-                  stats.oneTimeTasks.avgSlippageDays > 0 && (
-                    <>
-                      {" "}
-                      · average slip of{" "}
-                      <Text style={styles.bold}>
-                        {stats.oneTimeTasks.avgSlippageDays} days
-                      </Text>{" "}
-                      past the planned date
-                    </>
-                  )}
-              </Text>
-              {stats.reschedules.length > 0 && (
-                <>
-                  <Text style={[styles.bodyText, styles.bold, styles.spaced]}>
-                    Most rescheduled:
-                  </Text>
-                  {stats.reschedules.slice(0, 5).map((r) => (
-                    <Text
-                      key={`${r.taskName}-${r.headerName}`}
-                      style={styles.listItem}
-                    >
-                      • {r.taskName} — moved {r.total}×
-                      {r.pushedLater > 0
-                        ? ` (${r.pushedLater}× pushed later)`
-                        : ""}
-                    </Text>
-                  ))}
-                </>
+        <SectionHeader title="Tasks" />
+        {hasArchiveData ? (
+          <Card>
+            <StatRow
+              value={stats.oneTimeTasks.completedCount}
+              label={`one-time tasks completed in the last ${stats.periodDays} days`}
+              testID="insights-completed"
+            />
+            {/* On or before the planned date is a win — shown first, and
+                the slip line only appears when something was actually
+                late. Older backends don't send the counts, hence the
+                guard. Mirrors the web FE's InsightsPanel. */}
+            {stats.oneTimeTasks.onTimeCount !== undefined && (
+              <StatRow
+                value={stats.oneTimeTasks.onTimeCount}
+                label="on or before the planned date"
+                tone="success"
+                ratio={
+                  stats.oneTimeTasks.completedCount > 0
+                    ? stats.oneTimeTasks.onTimeCount /
+                      stats.oneTimeTasks.completedCount
+                    : null
+                }
+                testID="insights-on-time"
+              />
+            )}
+            {stats.oneTimeTasks.avgSlippageDays !== null &&
+              stats.oneTimeTasks.avgSlippageDays > 0 && (
+                <StatRow
+                  value={`${stats.oneTimeTasks.avgSlippageDays} days`}
+                  label="average slip past the planned date"
+                  tone="danger"
+                  testID="insights-slip"
+                />
               )}
-            </>
-          ) : (
-            <Text style={styles.emptyText}>
-              No task history yet — completed tasks are archived by the nightly
-              job.
-            </Text>
-          )}
-        </View>
+
+            {stats.reschedules.length > 0 && (
+              <View style={styles.reschedules}>
+                <Text style={styles.subheading}>Most rescheduled:</Text>
+                {stats.reschedules.slice(0, 5).map((r, i) => (
+                  <View
+                    // name + header can repeat in the data, so add the position
+                    key={`${r.taskName}-${r.headerName}-${i}`}
+                    style={styles.rescheduleRow}
+                  >
+                    <Text style={styles.rescheduleName} numberOfLines={2}>
+                      {r.taskName}
+                    </Text>
+                    <Text style={styles.rescheduleMeta}>
+                      moved {r.total}×
+                      {r.pushedLater > 0 ? ` (${r.pushedLater}× pushed later)` : ""}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            )}
+          </Card>
+        ) : (
+          <Card padded={false}>
+            <EmptyState
+              compact
+              icon="archive-outline"
+              title="No task history yet"
+              message="Completed tasks are archived by the nightly job."
+            />
+          </Card>
+        )}
       </View>
 
       {/* ── Coach (AI report) ── */}
       <View style={styles.section}>
-        <View style={styles.headerRow}>
-          <Text style={styles.headerName}>Coach</Text>
-          <TouchableOpacity
-            style={[
-              styles.generateBtn,
-              (generating || !hasArchiveData || onVacation) &&
-                styles.generateBtnDisabled,
-            ]}
-            onPress={handleGenerate}
-            disabled={generating || !hasArchiveData}
-            activeOpacity={0.7}
-          >
-            {generating ? (
-              <ActivityIndicator size="small" color="#fff" />
-            ) : (
-              <Text style={styles.generateText}>Generate now</Text>
-            )}
-          </TouchableOpacity>
-        </View>
-        <View style={styles.sectionBody}>
+        <SectionHeader
+          title="Coach"
+          right={
+            <Button
+              title="Generate now"
+              icon="sparkles"
+              variant="tonal"
+              onPress={handleGenerate}
+              loading={generating}
+              disabled={!hasArchiveData}
+              // While away it still works, but it reads as "not now".
+              style={onVacation && !generating && hasArchiveData ? styles.dimmed : undefined}
+              testID="insights-generate"
+            />
+          }
+        />
+        <Card>
           {report ? (
             <>
               <Text style={styles.metaText}>
@@ -281,37 +230,37 @@ export default function InsightsSection() {
               <ReportBlock
                 title="On track"
                 items={report.habitsOnTrack}
-                color="#2da44e"
+                tone="success"
                 icon="checkmark-circle-outline"
               />
               <ReportBlock
                 title="Slipping"
                 items={report.habitsSlipping}
-                color="#cf222e"
+                tone="danger"
                 icon="trending-down-outline"
               />
               <ReportBlock
                 title="Tasks"
                 items={report.taskInsights}
-                color="#656d76"
+                tone="neutral"
                 icon="list-outline"
               />
               <ReportBlock
                 title="Procrastination flags"
                 items={report.procrastinationFlags}
-                color="#cf222e"
+                tone="danger"
                 icon="flag-outline"
               />
               <ReportBlock
                 title="Calls to make"
                 items={report.callReminders}
-                color="#656d76"
+                tone="neutral"
                 icon="call-outline"
               />
               <ReportBlock
                 title="Suggestions"
                 items={report.suggestions}
-                color="#2da44e"
+                tone="success"
                 icon="bulb-outline"
               />
             </>
@@ -322,19 +271,119 @@ export default function InsightsSection() {
                 : 'No AI report yet — one is generated automatically each day, or tap "Generate now".'}
             </Text>
           )}
-        </View>
+        </Card>
       </View>
     </View>
   );
 }
 
-function ReportBlock({ title, items, color, icon }) {
-  if (!items || items.length === 0) return null;
+/** One habit: big completion rate, its bar, streak and the recent-days dots. */
+function HabitCard({ habit: h }) {
   return (
-    <View style={[styles.reportBlock, { borderLeftColor: color }]}>
+    <Card style={styles.habitCard}>
+      <View style={styles.habitTitleRow}>
+        <Text style={styles.habitTitle} numberOfLines={1}>
+          {h.taskName}
+        </Text>
+        <Text style={styles.habitHeader}>{h.headerName || ""}</Text>
+      </View>
+
+      <View style={styles.rateRow}>
+        <Text style={styles.bigNumber}>{h.completionRate}%</Text>
+        <Text style={styles.rateDetail}>
+          {h.completed}/{h.scheduled}
+        </Text>
+        <Badge
+          label={`streak ${h.currentStreak} (best ${h.longestStreak})`}
+          icon="flame"
+          tone="accent"
+          outline
+          style={styles.streakBadge}
+        />
+      </View>
+      <ProgressBar
+        value={h.completionRate / 100}
+        tone="success"
+        style={styles.rateBar}
+        testID={`habit-rate-${h.taskName}`}
+      />
+
+      {/* All-time count, deliberately separate from the windowed
+          figures above — it ignores the reporting period entirely. */}
+      {h.lifetimeCompleted !== undefined && (
+        <Text style={styles.habitLifetime}>
+          Done {h.lifetimeCompleted} time
+          {h.lifetimeCompleted === 1 ? "" : "s"} all-time
+        </Text>
+      )}
+      {h.pausedDays > 0 && (
+        <Text style={styles.habitPaused}>
+          {h.pausedDays} vacation day
+          {h.pausedDays === 1 ? "" : "s"} excluded
+        </Text>
+      )}
+      <View style={styles.dotRow}>
+        {h.recentResults.map((r) => {
+          // Three states, not two: a vacation day the user didn't act
+          // on is neither a hit nor a miss. Drawing it as a miss would
+          // make the excluded day look like a failure; dropping it
+          // would make the streak restart look like a bug.
+          const paused = !r.completed && r.vacation;
+          return (
+            <View
+              key={r.dueDate}
+              style={[
+                styles.dot,
+                r.completed ? styles.dotHit : paused ? styles.dotPaused : styles.dotMiss,
+              ]}
+            />
+          );
+        })}
+      </View>
+    </Card>
+  );
+}
+
+const STAT_TONES = {
+  neutral: colors.text,
+  success: colors.successText,
+  danger: colors.dangerText,
+};
+
+/** Big number on the left, what it counts on the right; optional ratio bar. */
+function StatRow({ value, label, tone = "neutral", ratio = null, testID }) {
+  return (
+    <View style={styles.statRow} testID={testID}>
+      <Text style={[styles.statValue, { color: STAT_TONES[tone] }]}>{value}</Text>
+      <View style={styles.statBody}>
+        <Text style={styles.statLabel}>{label}</Text>
+        {ratio !== null ? (
+          <ProgressBar
+            value={ratio}
+            tone="success"
+            style={styles.statBar}
+            testID={testID ? `${testID}-bar` : undefined}
+          />
+        ) : null}
+      </View>
+    </View>
+  );
+}
+
+const REPORT_TONES = {
+  success: { edge: colors.success, fg: colors.successText },
+  danger: { edge: colors.danger, fg: colors.dangerText },
+  neutral: { edge: colors.borderStrong, fg: colors.textSecondary },
+};
+
+function ReportBlock({ title, items, tone, icon }) {
+  if (!items || items.length === 0) return null;
+  const t = REPORT_TONES[tone] || REPORT_TONES.neutral;
+  return (
+    <View style={[styles.reportBlock, { borderLeftColor: t.edge }]}>
       <View style={styles.reportTitleRow}>
-        <Ionicons name={icon} size={15} color={color} />
-        <Text style={[styles.reportTitle, { color }]}>{title}</Text>
+        <Ionicons name={icon} size={16} color={t.fg} />
+        <Text style={[styles.reportTitle, { color: t.fg }]}>{title}</Text>
       </View>
       {items.map((item, i) => (
         <Text key={i} style={styles.listItem}>
@@ -346,79 +395,75 @@ function ReportBlock({ title, items, color, icon }) {
 }
 
 const styles = StyleSheet.create({
-  centered: {
-    alignItems: "center",
-    paddingVertical: 32,
+  loading: {
+    flex: 0,
+    paddingVertical: spacing.xxxl,
   },
   section: {
-    marginBottom: 24,
-    borderWidth: 1,
-    borderColor: "#eaeef2",
-    borderRadius: 10,
-    backgroundColor: "#fff",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
-    overflow: "hidden",
+    marginBottom: spacing.xxl,
   },
-  headerRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: "#eaeef2",
-    backgroundColor: "#f6f8fa",
+  strong: {
+    fontWeight: "700",
   },
-  headerName: {
-    fontSize: 18,
-    fontWeight: "600",
-    color: "#1f2328",
+  vacationHint: {
+    ...type.footnote,
+    marginBottom: spacing.md,
+    paddingHorizontal: spacing.xs,
   },
-  sectionBody: {
-    padding: 14,
-  },
+
+  /* Habits */
   habitCard: {
-    borderWidth: 1,
-    borderColor: "#d0d7de",
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 10,
+    marginBottom: spacing.md,
   },
   habitTitleRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "baseline",
-    gap: 8,
+    gap: spacing.sm,
   },
   habitTitle: {
-    fontSize: 15,
-    fontWeight: "600",
-    color: "#1f2328",
+    ...type.headline,
     flex: 1,
   },
   habitHeader: {
-    fontSize: 12,
-    color: "#656d76",
-  },
-  habitRate: {
-    fontSize: 22,
-    fontWeight: "700",
-    color: "#1f2328",
-    marginVertical: 6,
-  },
-  habitDetail: {
-    fontSize: 12,
+    ...type.caption,
     fontWeight: "400",
-    color: "#656d76",
+  },
+  rateRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: spacing.sm,
+    marginTop: spacing.sm,
+  },
+  bigNumber: {
+    ...type.largeTitle,
+  },
+  rateDetail: {
+    ...type.subhead,
+    fontWeight: "600",
+  },
+  streakBadge: {
+    alignSelf: "center",
+  },
+  rateBar: {
+    marginTop: spacing.sm,
+    marginBottom: spacing.sm,
+  },
+  habitLifetime: {
+    ...type.footnote,
+    marginBottom: spacing.xxs,
+  },
+  habitPaused: {
+    ...type.footnote,
+    fontStyle: "italic",
+    marginBottom: spacing.xs,
   },
   dotRow: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: 4,
+    gap: spacing.xs,
+    marginTop: spacing.xs,
   },
   dot: {
     width: 12,
@@ -426,10 +471,10 @@ const styles = StyleSheet.create({
     borderRadius: 6,
   },
   dotHit: {
-    backgroundColor: "#2da44e",
+    backgroundColor: colors.success,
   },
   dotMiss: {
-    backgroundColor: "#cf222e",
+    backgroundColor: colors.danger,
     opacity: 0.55,
   },
   /* A vacation day the user didn't act on: neither a hit nor a miss. Hollow so
@@ -438,111 +483,94 @@ const styles = StyleSheet.create({
   dotPaused: {
     backgroundColor: "transparent",
     borderWidth: 1.5,
-    borderColor: "#8b949e",
+    borderColor: colors.textTertiary,
     borderStyle: "dashed",
   },
-  vacationNote: {
-    backgroundColor: "#eef6fd",
-    borderWidth: 1,
-    borderColor: "#c5dcf5",
-    borderLeftWidth: 4,
-    borderLeftColor: "#1e88e5",
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 16,
+
+  /* Tasks */
+  statRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+    paddingVertical: spacing.sm,
   },
-  vacationNoteText: { fontSize: 13, color: "#1f2328", lineHeight: 19 },
-  vacationNoteStrong: { fontWeight: "700" },
-  vacationHint: {
-    fontSize: 12,
-    color: "#656d76",
-    marginBottom: 12,
-    lineHeight: 17,
+  statValue: {
+    ...type.title,
+    minWidth: 56,
   },
-  habitLifetime: { fontSize: 12, color: "#656d76", marginBottom: 2 },
-  habitPaused: {
-    fontSize: 12,
-    color: "#656d76",
-    fontStyle: "italic",
-    marginBottom: 4,
+  statBody: {
+    flex: 1,
   },
-  bodyText: {
-    fontSize: 14,
-    color: "#1f2328",
-    lineHeight: 20,
+  statLabel: {
+    ...type.subhead,
   },
-  bold: {
-    fontWeight: "700",
+  statBar: {
+    marginTop: spacing.xs + 2,
   },
-  spaced: {
-    marginTop: 10,
-    marginBottom: 4,
+  reschedules: {
+    marginTop: spacing.sm,
+    paddingTop: spacing.md,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.divider,
   },
-  listItem: {
-    fontSize: 13,
-    color: "#1f2328",
-    lineHeight: 19,
-    marginBottom: 4,
+  subheading: {
+    ...type.overline,
+    color: colors.textSecondary,
+    marginBottom: spacing.sm,
+  },
+  rescheduleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: spacing.md,
+    paddingVertical: spacing.xs + 2,
+  },
+  rescheduleName: {
+    ...type.callout,
+    flex: 1,
+  },
+  rescheduleMeta: {
+    ...type.footnote,
+    color: colors.dangerText,
+    fontWeight: "600",
+  },
+
+  /* Coach */
+  dimmed: {
+    opacity: 0.45,
   },
   metaText: {
-    fontSize: 12,
-    color: "#656d76",
-    marginBottom: 8,
+    ...type.caption,
+    fontWeight: "400",
+    marginBottom: spacing.sm,
   },
   summaryText: {
-    fontSize: 15,
-    fontWeight: "500",
-    color: "#1f2328",
-    lineHeight: 21,
-    marginBottom: 12,
+    ...type.callout,
+    marginBottom: spacing.md,
   },
   reportBlock: {
     borderLeftWidth: 3,
-    paddingLeft: 10,
-    marginBottom: 12,
+    paddingLeft: spacing.md,
+    marginBottom: spacing.md,
   },
   reportTitleRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 5,
-    marginBottom: 4,
+    gap: spacing.xs + 2,
+    marginBottom: spacing.xs,
   },
   reportTitle: {
-    fontSize: 14,
+    ...type.subhead,
     fontWeight: "700",
   },
-  generateBtn: {
-    backgroundColor: "#6200ee",
-    paddingVertical: 7,
-    paddingHorizontal: 14,
-    borderRadius: 8,
-    minWidth: 110,
-    alignItems: "center",
-  },
-  generateBtnDisabled: {
-    opacity: 0.5,
-  },
-  generateText: {
-    color: "#fff",
-    fontWeight: "600",
-    fontSize: 13,
-  },
-  errorBar: {
-    backgroundColor: "#fef2f2",
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: "#fde8e8",
-  },
-  errorText: {
-    fontSize: 13,
-    color: "#e74c3c",
+  listItem: {
+    ...type.footnote,
+    color: colors.text,
+    marginBottom: spacing.xs,
   },
   emptyText: {
+    ...type.subhead,
     textAlign: "center",
-    fontSize: 14,
-    color: "#656d76",
-    paddingVertical: 12,
+    paddingVertical: spacing.sm,
   },
 });

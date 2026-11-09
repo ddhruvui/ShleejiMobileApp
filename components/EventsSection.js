@@ -4,13 +4,7 @@ import React, {
   useCallback,
   useImperativeHandle,
 } from "react";
-import {
-  StyleSheet,
-  View,
-  Text,
-  TouchableOpacity,
-  ActivityIndicator,
-} from "react-native";
+import { StyleSheet, View, Text, Pressable } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as eventsApi from "../api/events";
 import * as headersApi from "../api/headers";
@@ -18,7 +12,18 @@ import * as tasksApi from "../api/tasks";
 import EventModal from "./EventModal";
 import ScheduleEventModal from "./ScheduleEventModal";
 import ConfirmModal from "./ConfirmModal";
+import {
+  ActionSheet,
+  Banner,
+  BannerText,
+  Button,
+  Card,
+  EmptyState,
+  IconButton,
+  LoadingState,
+} from "./ui";
 import { formatDateKey } from "../utils/ecd";
+import { colors, spacing, type, HIT_TARGET } from "../theme";
 
 export default function EventsSection({ onTasksAdded, onViewTodo, addRef }) {
   const [events, setEvents] = useState([]);
@@ -33,6 +38,10 @@ export default function EventsSection({ onTasksAdded, onViewTodo, addRef }) {
   const [eventModalState, setEventModalState] = useState(null);
   const [scheduleState, setScheduleState] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
+  // "⋯" menu: the id is kept while the sheet animates closed so its title
+  // doesn't blank out mid-dismiss.
+  const [menuId, setMenuId] = useState(null);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   // This panel has no toolbar of its own: TodoScreen's title-bar "+" opens the
   // add-event modal through this handle while the Events view is showing.
@@ -68,6 +77,11 @@ export default function EventsSection({ onTasksAdded, onViewTodo, addRef }) {
       else next.add(id);
       return next;
     });
+
+  const openMenu = (id) => {
+    setMenuId(id);
+    setMenuOpen(true);
+  };
 
   /* ── Event CRUD ── */
 
@@ -138,148 +152,148 @@ export default function EventsSection({ onTasksAdded, onViewTodo, addRef }) {
   /* ── Render ── */
 
   if (loading) {
-    return (
-      <View style={styles.centered}>
-        <ActivityIndicator size="small" color="#6200ee" />
-        <Text style={styles.loadingText}>Loading events…</Text>
-      </View>
-    );
+    return <LoadingState label="Loading events…" style={styles.loading} />;
   }
+
+  const menuEvent = events.find((e) => e._id === menuId);
+  const menuCount = menuEvent ? menuEvent.tasks.length : 0;
+  const menuActions = menuEvent
+    ? [
+        {
+          key: "schedule",
+          label: "Add to todo",
+          icon: "add-circle-outline",
+          onPress: () => setScheduleState({ event: menuEvent }),
+        },
+        {
+          key: "edit",
+          label: "Edit event",
+          icon: "pencil",
+          onPress: () => setEventModalState({ mode: "edit", event: menuEvent }),
+        },
+        {
+          key: "delete",
+          label: "Delete event",
+          icon: "trash-outline",
+          destructive: true,
+          onPress: () => setDeleteTarget(menuEvent),
+        },
+      ]
+    : [];
 
   return (
     <View>
       {error && (
-        <View style={styles.errorBar}>
-          <Text style={styles.errorText}>Action failed: {error}</Text>
-          <TouchableOpacity onPress={() => setError(null)}>
-            <Ionicons name="close" size={18} color="#e74c3c" />
-          </TouchableOpacity>
-        </View>
+        <Banner tone="danger" onDismiss={() => setError(null)}>
+          {`Action failed: ${error}`}
+        </Banner>
       )}
       {notice && (
-        <View style={styles.noticeBar}>
-          <Text style={styles.noticeText}>{notice}</Text>
+        <Banner
+          tone="success"
+          icon="checkmark"
+          onDismiss={() => setNotice(null)}
+        >
+          <BannerText style={styles.noticeText}>{notice}</BannerText>
           {onViewTodo && (
-            <TouchableOpacity
+            <Button
+              title="View in todo"
+              variant="ghost"
+              icon="arrow-forward"
               onPress={onViewTodo}
               style={styles.noticeLink}
-              accessibilityRole="button"
-            >
-              <Text style={styles.noticeLinkText}>View in todo</Text>
-            </TouchableOpacity>
+            />
           )}
-          <TouchableOpacity onPress={() => setNotice(null)}>
-            <Ionicons name="close" size={18} color="#1a7f37" />
-          </TouchableOpacity>
-        </View>
+        </Banner>
       )}
 
-      {events.length > 0 && (
-        <View style={styles.list}>
-          {events.map((event, idx) => {
-            const isOpen = expanded.has(event._id);
-            const count = event.tasks.length;
-            return (
-              <View
-                key={event._id}
-                style={[styles.event, idx > 0 && styles.eventDivider]}
+      {events.map((event) => {
+        const isOpen = expanded.has(event._id);
+        const count = event.tasks.length;
+        const countLabel = `${count} task${count === 1 ? "" : "s"}`;
+        return (
+          <Card key={event._id} padded={false} style={styles.card}>
+            <View style={styles.head}>
+              <Pressable
+                style={({ pressed }) => [
+                  styles.toggle,
+                  pressed && styles.togglePressed,
+                ]}
+                onPress={() => toggleExpanded(event._id)}
+                onLongPress={() => openMenu(event._id)}
+                accessibilityRole="button"
+                accessibilityState={{ expanded: isOpen }}
+                accessibilityLabel={`${isOpen ? "Collapse" : "Expand"} ${event.name}`}
+                accessibilityHint="Long press for more actions."
               >
-                <View style={styles.eventHead}>
-                  <TouchableOpacity
-                    style={styles.toggle}
-                    onPress={() => toggleExpanded(event._id)}
-                    accessibilityRole="button"
-                    accessibilityState={{ expanded: isOpen }}
-                    accessibilityLabel={`${isOpen ? "Collapse" : "Expand"} ${event.name}`}
-                    activeOpacity={0.6}
-                  >
-                    <Ionicons
-                      name={isOpen ? "chevron-down" : "chevron-forward"}
-                      size={16}
-                      color="#656d76"
-                    />
-                    <View style={styles.eventText}>
-                      <View style={styles.eventTitleRow}>
-                        <Text style={styles.eventName} numberOfLines={1}>
-                          {event.name}
-                        </Text>
-                        <View style={styles.countPill}>
-                          <Text style={styles.countText}>
-                            {count} task{count === 1 ? "" : "s"}
-                          </Text>
-                        </View>
-                      </View>
-                      {!isOpen && count > 0 && (
-                        <Text style={styles.preview} numberOfLines={1}>
-                          {event.tasks.join(" · ")}
-                        </Text>
-                      )}
-                    </View>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    style={styles.iconBtn}
-                    onPress={() => setEventModalState({ mode: "edit", event })}
-                    accessibilityLabel={`Edit event ${event.name}`}
-                  >
-                    <Ionicons name="pencil" size={16} color="#656d76" />
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={styles.iconBtn}
-                    onPress={() => setDeleteTarget(event)}
-                    accessibilityLabel={`Delete event ${event.name}`}
-                  >
-                    <Ionicons name="trash-outline" size={16} color="#656d76" />
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={styles.scheduleBtn}
-                    onPress={() => setScheduleState({ event })}
-                    accessibilityLabel={`Add ${event.name} to todo`}
-                    activeOpacity={0.8}
-                  >
-                    <Ionicons name="add" size={15} color="#ffffff" />
-                    {/* Short label so long event names fit on a phone; the
-                        accessibility label still reads "Add … to todo" */}
-                    <Text style={styles.scheduleBtnText}>Todo</Text>
-                  </TouchableOpacity>
+                <View style={styles.headText}>
+                  <Text style={styles.eventName} numberOfLines={2}>
+                    {event.name}
+                  </Text>
+                  <Text style={styles.meta} numberOfLines={1}>
+                    {countLabel}
+                    {!isOpen && count > 0
+                      ? ` · ${event.tasks.join(" · ")}`
+                      : ""}
+                  </Text>
                 </View>
+                <Ionicons
+                  name={isOpen ? "chevron-down" : "chevron-forward"}
+                  size={20}
+                  color={colors.textTertiary}
+                />
+              </Pressable>
+              <IconButton
+                icon="ellipsis-horizontal"
+                label={`More actions for ${event.name}`}
+                onPress={() => openMenu(event._id)}
+                style={styles.more}
+              />
+            </View>
 
-                {isOpen && (
-                  <View style={styles.taskList}>
-                    {event.tasks.map((task, i) => (
-                      <View
-                        key={i}
-                        style={[
-                          styles.taskRow,
-                          i === count - 1 && styles.taskRowLast,
-                        ]}
-                      >
-                        <Text style={styles.taskNum}>{i + 1}</Text>
-                        <Text style={styles.taskName}>{task}</Text>
-                        <TouchableOpacity
-                          style={styles.taskAddBtn}
-                          onPress={() =>
-                            setScheduleState({ event, initialSelected: [task] })
-                          }
-                          accessibilityLabel={`Add "${task}" to todo`}
-                        >
-                          <Text style={styles.taskAddText}>+ Add</Text>
-                        </TouchableOpacity>
-                      </View>
-                    ))}
+            {isOpen && (
+              <View style={styles.body}>
+                {event.tasks.map((task, i) => (
+                  <View
+                    key={i}
+                    style={[styles.taskRow, i > 0 && styles.taskDivider]}
+                  >
+                    <Text style={styles.taskNum}>{i + 1}</Text>
+                    <Text style={styles.taskName}>{task}</Text>
+                    <IconButton
+                      icon="add-circle-outline"
+                      label={`Add "${task}" to todo`}
+                      color={colors.primary}
+                      onPress={() =>
+                        setScheduleState({ event, initialSelected: [task] })
+                      }
+                    />
                   </View>
-                )}
+                ))}
+                <Button
+                  title="Add to todo"
+                  variant="tonal"
+                  icon="add"
+                  accessibilityLabel={`Add ${event.name} to todo`}
+                  onPress={() => setScheduleState({ event })}
+                  fullWidth
+                  style={styles.schedule}
+                />
               </View>
-            );
-          })}
-        </View>
-      )}
+            )}
+          </Card>
+        );
+      })}
 
       {events.length === 0 && (
-        <Text style={styles.emptyText}>
-          No events yet — add one! An event is a reusable bundle of tasks (e.g.
-          "Burger Night") you can drop into your todo for any date.
-        </Text>
+        <EmptyState
+          compact
+          icon="albums-outline"
+          title="No events yet — add one!"
+          message={
+            'An event is a reusable bundle of tasks (e.g. "Burger Night") you can drop into your todo for any date.'
+          }
+        />
       )}
       {events.length > 0 && (
         <Text style={styles.hint}>
@@ -289,6 +303,16 @@ export default function EventsSection({ onTasksAdded, onViewTodo, addRef }) {
       )}
 
       {/* Modals */}
+      <ActionSheet
+        visible={menuOpen}
+        title={menuEvent?.name}
+        subtitle={
+          menuEvent ? `${menuCount} task${menuCount === 1 ? "" : "s"}` : undefined
+        }
+        actions={menuActions}
+        onClose={() => setMenuOpen(false)}
+      />
+
       <EventModal
         visible={!!eventModalState}
         event={
@@ -317,191 +341,91 @@ export default function EventsSection({ onTasksAdded, onViewTodo, addRef }) {
 }
 
 const styles = StyleSheet.create({
-  centered: {
-    alignItems: "center",
-    paddingVertical: 32,
-  },
-  loadingText: {
-    marginTop: 8,
-    fontSize: 14,
-    color: "#656d76",
-  },
-  errorBar: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    backgroundColor: "#fef2f2",
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: "#fde8e8",
-  },
-  errorText: {
-    fontSize: 13,
-    color: "#e74c3c",
-    flex: 1,
-    marginRight: 8,
-  },
-  noticeBar: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    backgroundColor: "#f0fdf4",
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: "#bbf7d0",
+  loading: {
+    flex: 0,
+    paddingVertical: spacing.xxxl,
   },
   noticeText: {
-    fontSize: 13,
-    color: "#1a7f37",
-    flex: 1,
-    marginRight: 8,
+    color: colors.successText,
   },
   noticeLink: {
-    marginRight: 10,
+    alignSelf: "flex-start",
+    paddingHorizontal: 0,
+    minHeight: HIT_TARGET,
   },
-  noticeLinkText: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: "#1a7f37",
-    textDecorationLine: "underline",
+  card: {
+    marginBottom: spacing.md,
   },
-  // Accordion list in the web FE's palette: purple is the Events identity
-  // color, green the primary action, red stays on the delete confirm.
-  list: {
-    borderWidth: 1,
-    borderColor: "#d0d7de",
-    borderRadius: 8,
-    backgroundColor: "#fff",
-    overflow: "hidden",
-    marginBottom: 12,
-  },
-  event: {},
-  eventDivider: {
-    borderTopWidth: 1,
-    borderTopColor: "#d0d7de",
-  },
-  eventHead: {
+  head: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: 10,
-    paddingLeft: 8,
-    paddingRight: 10,
-    minHeight: 56,
+    paddingRight: spacing.xs,
   },
   toggle: {
     flex: 1,
     minWidth: 0,
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
-    paddingVertical: 4,
-    paddingRight: 4,
+    gap: spacing.sm,
+    minHeight: HIT_TARGET + spacing.xl,
+    paddingVertical: spacing.md,
+    paddingLeft: spacing.lg,
+    paddingRight: spacing.xs,
   },
-  eventText: {
+  togglePressed: {
+    opacity: 0.7,
+  },
+  headText: {
     flex: 1,
     minWidth: 0,
   },
-  eventTitleRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-  },
   eventName: {
-    flexShrink: 1,
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#1f2328",
+    ...type.headline,
   },
-  countPill: {
-    borderWidth: 1,
-    borderColor: "#d0d7de",
-    borderRadius: 999,
-    paddingHorizontal: 6,
-    paddingVertical: 1,
-  },
-  countText: {
-    fontSize: 11,
-    fontWeight: "600",
-    color: "#656d76",
-  },
-  preview: {
+  meta: {
+    ...type.footnote,
     marginTop: 2,
-    fontSize: 13,
-    color: "#656d76",
   },
-  iconBtn: {
-    padding: 7,
-    borderRadius: 6,
+  more: {
+    marginLeft: spacing.xxs,
   },
-  scheduleBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 2,
-    backgroundColor: "#1a7f37",
-    paddingVertical: 7,
-    paddingLeft: 6,
-    paddingRight: 9,
-    borderRadius: 6,
-    marginLeft: 4,
-  },
-  scheduleBtnText: {
-    fontSize: 12,
-    fontWeight: "600",
-    color: "#ffffff",
-  },
-  taskList: {
-    paddingLeft: 30,
-    paddingRight: 12,
-    paddingBottom: 8,
+  body: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.divider,
+    paddingLeft: spacing.lg,
+    paddingRight: spacing.xs,
+    paddingBottom: spacing.lg,
   },
   taskRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: "#eaeef2",
+    gap: spacing.md,
+    minHeight: HIT_TARGET + spacing.xs,
   },
-  taskRowLast: {
-    borderBottomWidth: 0,
+  taskDivider: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.divider,
   },
   taskNum: {
+    ...type.caption,
     width: 20,
-    fontSize: 12,
-    fontWeight: "600",
-    color: "#8250df",
+    color: colors.primaryText,
     fontVariant: ["tabular-nums"],
   },
   taskName: {
-    fontSize: 15,
-    color: "#1f2328",
+    ...type.callout,
+    fontWeight: "400",
     flex: 1,
+    paddingVertical: spacing.sm,
   },
-  taskAddBtn: {
-    borderWidth: 1,
-    borderColor: "#d0d7de",
-    borderRadius: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-  },
-  taskAddText: {
-    fontSize: 12,
-    fontWeight: "500",
-    color: "#1f2328",
+  schedule: {
+    marginTop: spacing.sm,
+    marginRight: spacing.md,
   },
   hint: {
-    fontSize: 13,
-    color: "#656d76",
-    marginBottom: 16,
-  },
-  emptyText: {
-    textAlign: "center",
-    fontSize: 14,
-    color: "#656d76",
-    paddingVertical: 24,
+    ...type.footnote,
+    marginTop: spacing.xs,
+    marginBottom: spacing.lg,
+    paddingHorizontal: spacing.xs,
   },
 });

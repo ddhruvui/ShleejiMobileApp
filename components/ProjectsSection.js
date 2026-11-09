@@ -5,20 +5,26 @@ import React, {
   useRef,
   useImperativeHandle,
 } from "react";
-import {
-  StyleSheet,
-  View,
-  Text,
-  TouchableOpacity,
-  ActivityIndicator,
-} from "react-native";
-import { Ionicons } from "@expo/vector-icons";
+import { StyleSheet, View, Text, Pressable } from "react-native";
 import * as projectsApi from "../api/projects";
 import * as headersApi from "../api/headers";
 import * as tasksApi from "../api/tasks";
 import ProjectModal from "./ProjectModal";
 import ProjectTaskModal from "./ProjectTaskModal";
 import ConfirmModal from "./ConfirmModal";
+import {
+  ActionSheet,
+  Badge,
+  Banner,
+  Card,
+  Checkbox,
+  EmptyState,
+  IconButton,
+  LoadingState,
+  ProgressBar,
+} from "./ui";
+import { todayDateKey } from "../utils/ecd";
+import { colors, radii, spacing, type } from "../theme";
 
 /**
  * Whether two tasks sit in the same movable group. The server sorts a
@@ -36,6 +42,32 @@ function formatTaskDate(date) {
   return y === new Date().getFullYear()
     ? label
     : `${label}/${String(y % 100).padStart(2, "0")}`;
+}
+
+/**
+ * The date badge for a project task, toned like the todo's TaskCard: "Today"
+ * in brand, overdue-and-not-done in red, any other date neutral. Undated
+ * tasks keep their "No date" badge — dated vs undated is one of the move
+ * barriers, so the row shows which side of it a task sits on. Date keys
+ * compare as strings (YYYY-MM-DD), never through `new Date("YYYY-MM-DD")`.
+ */
+function dateBadge(task, today = todayDateKey()) {
+  if (!task.date) return { label: "No date", tone: "neutral" };
+  if (task.date === today) {
+    return { label: "Today", tone: "primary", icon: "calendar" };
+  }
+  if (task.date < today && !task.done) {
+    return {
+      label: `Overdue · ${formatTaskDate(task.date)}`,
+      tone: "danger",
+      icon: "alert-circle",
+    };
+  }
+  return {
+    label: formatTaskDate(task.date),
+    tone: "neutral",
+    icon: "calendar-outline",
+  };
 }
 
 export default function ProjectsSection({ onTasksChanged, addRef }) {
@@ -390,211 +422,80 @@ export default function ProjectsSection({ onTasksChanged, addRef }) {
   /* ── Render ── */
 
   if (loading) {
-    return (
-      <View style={styles.centered}>
-        <ActivityIndicator size="small" color="#6200ee" />
-        <Text style={styles.loadingText}>Loading projects…</Text>
-      </View>
-    );
+    return <LoadingState label="Loading projects…" style={styles.loading} />;
   }
 
   return (
     <View>
       {error && (
-        <View style={styles.errorBar}>
-          <Text style={styles.errorText}>Action failed: {error}</Text>
-          <TouchableOpacity onPress={() => setError(null)}>
-            <Ionicons name="close" size={18} color="#e74c3c" />
-          </TouchableOpacity>
-        </View>
+        <Banner
+          tone="danger"
+          icon="alert-circle"
+          onDismiss={() => setError(null)}
+        >
+          {`Action failed: ${error}`}
+        </Banner>
       )}
 
-      {projects.map((project, idx) => {
-        const doneCount = project.tasks.filter((t) => t.done).length;
-        return (
-          <View key={project._id} style={styles.section}>
-            <View style={styles.headerRow}>
-              <Text style={styles.headerName} numberOfLines={1}>
-                {project.name}
-              </Text>
-              <View style={styles.headerActions}>
-                {project.tasks.length > 0 && (
-                  <Text style={styles.progressBadge}>
-                    {doneCount}/{project.tasks.length} done
-                  </Text>
-                )}
-                <TouchableOpacity
-                  style={[styles.headerBtn, idx === 0 && styles.busyBtn]}
-                  onPress={() => handleMoveProject(project, -1)}
-                  disabled={idx === 0}
-                >
-                  <Ionicons name="arrow-up" size={16} color="#656d76" />
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[
-                    styles.headerBtn,
-                    idx === projects.length - 1 && styles.busyBtn,
-                  ]}
-                  onPress={() => handleMoveProject(project, 1)}
-                  disabled={idx === projects.length - 1}
-                >
-                  <Ionicons name="arrow-down" size={16} color="#656d76" />
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.headerBtn}
-                  onPress={() =>
-                    setProjectModalState({ mode: "edit", project })
-                  }
-                >
-                  <Ionicons name="pencil" size={16} color="#656d76" />
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.headerBtn}
-                  onPress={() => setDeleteProjectTarget(project)}
-                >
-                  <Ionicons name="trash-outline" size={16} color="#e74c3c" />
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.headerBtn}
-                  onPress={() => setTaskModalState({ project })}
-                >
-                  <Ionicons name="add" size={18} color="#656d76" />
-                </TouchableOpacity>
-              </View>
-            </View>
-
-            <View style={styles.taskList}>
-              {project.tasks.map((task, taskIdx) => {
-                const prev = project.tasks[taskIdx - 1];
-                const next = project.tasks[taskIdx + 1];
-                // Moves never cross the done/undone barrier (same as the todo)
-                // nor the dated/undated one the server enforces among undone
-                // tasks, so the panel can't offer a swap the server undoes.
-                const canMoveUp = taskIdx > 0 && sameMoveGroup(prev, task);
-                const canMoveDown =
-                  taskIdx < project.tasks.length - 1 &&
-                  sameMoveGroup(next, task);
-                const isLast = taskIdx === project.tasks.length - 1;
-                return (
-                  <View
-                    key={`${task.name}-${taskIdx}`}
-                    style={[
-                      styles.taskRow,
-                      task.done && styles.taskRowDone,
-                      isLast && styles.taskRowLast,
-                    ]}
-                  >
-                    {/* Same square checkbox as the todo's TaskCard */}
-                    <TouchableOpacity
-                      style={[
-                        styles.taskCheck,
-                        task.done && styles.taskCheckDone,
-                        busy && styles.busyBtn,
-                      ]}
-                      onPress={() => handleToggleTaskDone(project, taskIdx)}
-                      disabled={busy}
-                    >
-                      {task.done && (
-                        <Ionicons name="checkmark" size={14} color="#fff" />
-                      )}
-                    </TouchableOpacity>
-                    <View style={styles.taskMain}>
-                      <View style={styles.taskLabelRow}>
-                        <Text
-                          style={[
-                            styles.taskName,
-                            task.done && styles.taskNameDone,
-                          ]}
-                          numberOfLines={2}
-                        >
-                          {task.name}
-                        </Text>
-                        {/* Same slot the todo uses for the ECD badge */}
-                        <View style={styles.taskEcdBadge}>
-                          <Text style={styles.taskEcdText}>
-                            {task.date ? formatTaskDate(task.date) : "No date"}
-                          </Text>
-                        </View>
-                      </View>
-                      {!!task.notes && (
-                        <Text style={styles.taskNotes} numberOfLines={1}>
-                          → {task.notes}
-                        </Text>
-                      )}
-                    </View>
-                    <View style={styles.taskActions}>
-                      <TouchableOpacity
-                        style={[styles.actionBtn, busy && styles.busyBtn]}
-                        onPress={() =>
-                          setTaskModalState({ project, taskIndex: taskIdx })
-                        }
-                        disabled={busy}
-                      >
-                        <Ionicons name="pencil" size={16} color="#656d76" />
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        style={[
-                          styles.actionBtn,
-                          (busy || !canMoveUp) && styles.busyBtn,
-                        ]}
-                        onPress={() => handleMoveTask(project, taskIdx, -1)}
-                        disabled={busy || !canMoveUp}
-                      >
-                        <Ionicons
-                          name="arrow-up"
-                          size={16}
-                          color={!busy && canMoveUp ? "#656d76" : "#ccc"}
-                        />
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        style={[
-                          styles.actionBtn,
-                          (busy || !canMoveDown) && styles.busyBtn,
-                        ]}
-                        onPress={() => handleMoveTask(project, taskIdx, 1)}
-                        disabled={busy || !canMoveDown}
-                      >
-                        <Ionicons
-                          name="arrow-down"
-                          size={16}
-                          color={!busy && canMoveDown ? "#656d76" : "#ccc"}
-                        />
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        style={[styles.actionBtn, busy && styles.busyBtn]}
-                        onPress={() =>
-                          setDeleteTaskTarget({ project, taskIndex: taskIdx })
-                        }
-                        disabled={busy}
-                      >
-                        <Ionicons
-                          name="trash-outline"
-                          size={16}
-                          color="#e74c3c"
-                        />
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                );
-              })}
-              {project.tasks.length === 0 && (
-                <Text style={styles.noTasksText}>
-                  No tasks yet — add the steps that get this project done.
-                </Text>
-              )}
-            </View>
-          </View>
-        );
-      })}
+      {projects.map((project, idx) => (
+        <ProjectCard
+          key={project._id}
+          project={project}
+          canMoveUp={idx !== 0}
+          canMoveDown={idx !== projects.length - 1}
+          onAddTask={() => setTaskModalState({ project })}
+          onRename={() => setProjectModalState({ mode: "edit", project })}
+          onMoveUp={() => handleMoveProject(project, -1)}
+          onMoveDown={() => handleMoveProject(project, 1)}
+          onDelete={() => setDeleteProjectTarget(project)}
+        >
+          {project.tasks.map((task, taskIdx) => {
+            const prev = project.tasks[taskIdx - 1];
+            const next = project.tasks[taskIdx + 1];
+            // Moves never cross the done/undone barrier (same as the todo)
+            // nor the dated/undated one the server enforces among undone
+            // tasks, so the panel can't offer a swap the server undoes.
+            const canMoveUp = taskIdx > 0 && sameMoveGroup(prev, task);
+            const canMoveDown =
+              taskIdx < project.tasks.length - 1 && sameMoveGroup(next, task);
+            return (
+              <ProjectTaskRow
+                key={`${task.name}-${taskIdx}`}
+                task={task}
+                busy={busy}
+                canMoveUp={canMoveUp}
+                canMoveDown={canMoveDown}
+                onToggleDone={() => handleToggleTaskDone(project, taskIdx)}
+                onEdit={() => setTaskModalState({ project, taskIndex: taskIdx })}
+                onMoveUp={() => handleMoveTask(project, taskIdx, -1)}
+                onMoveDown={() => handleMoveTask(project, taskIdx, 1)}
+                onDelete={() =>
+                  setDeleteTaskTarget({ project, taskIndex: taskIdx })
+                }
+              />
+            );
+          })}
+          {project.tasks.length === 0 && (
+            <Text style={styles.noTasksText}>
+              No tasks yet — add the steps that get this project done.
+            </Text>
+          )}
+        </ProjectCard>
+      ))}
 
       {projects.length === 0 && (
-        <Text style={styles.emptyText}>
-          No projects yet — add one! A long term project (e.g. "Automated Stock
-          Market") lists the steps that get it done (e.g. "get data from
-          EODHD"). Give a step a date and it shows up in the todo under the
-          project's name; once it's done and the nightly cleanup runs, it leaves
-          the todo but stays here as a completed step.
-        </Text>
+        <EmptyState
+          compact
+          icon="briefcase-outline"
+          title="No projects yet — add one!"
+          message={
+            'A long term project (e.g. "Automated Stock Market") lists the ' +
+            'steps that get it done (e.g. "get data from EODHD"). Give a step ' +
+            "a date and it shows up in the todo under the project's name; " +
+            "once it's done and the nightly cleanup runs, it leaves the todo " +
+            "but stays here as a completed step."
+          }
+        />
       )}
 
       {/* Modals */}
@@ -650,172 +551,310 @@ export default function ProjectsSection({ onTasksChanged, addRef }) {
   );
 }
 
+/**
+ * One project as a card: the full name, a done/total meta line with a
+ * progress bar, "+" to add a task and "⋯" for the rest (rename, move,
+ * delete). Project moves are never gated on `busy` — same as before the
+ * menu existed.
+ */
+function ProjectCard({
+  project,
+  canMoveUp,
+  canMoveDown,
+  onAddTask,
+  onRename,
+  onMoveUp,
+  onMoveDown,
+  onDelete,
+  children,
+}) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const total = project.tasks.length;
+  const doneCount = project.tasks.filter((t) => t.done).length;
+  const progress = total > 0 ? `${doneCount}/${total} done` : null;
+
+  const menuActions = [
+    {
+      key: "rename",
+      label: "Rename project",
+      icon: "pencil",
+      onPress: onRename,
+    },
+    {
+      key: "up",
+      label: "Move up",
+      icon: "arrow-up",
+      disabled: !canMoveUp,
+      onPress: onMoveUp,
+    },
+    {
+      key: "down",
+      label: "Move down",
+      icon: "arrow-down",
+      disabled: !canMoveDown,
+      onPress: onMoveDown,
+    },
+    {
+      key: "delete",
+      label: "Delete project",
+      icon: "trash-outline",
+      destructive: true,
+      onPress: onDelete,
+    },
+  ];
+
+  return (
+    <>
+      <Card padded={false} style={styles.card} testID={`project-${project._id}`}>
+        {/* Clips row press highlights to the card's corners without putting
+            overflow:hidden on the Card itself, which would clip its shadow. */}
+        <View style={styles.cardClip}>
+          <View style={styles.header}>
+            <View style={styles.headerText}>
+              <Text
+                style={styles.projectName}
+                numberOfLines={2}
+                accessibilityRole="header"
+              >
+                {project.name}
+              </Text>
+              {progress ? (
+                <View style={styles.metaRow}>
+                  <Text style={styles.metaText}>{progress}</Text>
+                  <ProgressBar
+                    value={doneCount / total}
+                    tone={doneCount === total ? "success" : "primary"}
+                    style={styles.progress}
+                    testID={`project-progress-${project._id}`}
+                  />
+                </View>
+              ) : null}
+            </View>
+            <IconButton
+              icon="add"
+              variant="tonal"
+              label={`Add task to ${project.name}`}
+              onPress={onAddTask}
+            />
+            <IconButton
+              icon="ellipsis-horizontal"
+              label={`More actions for ${project.name}`}
+              onPress={() => setMenuOpen(true)}
+            />
+          </View>
+          {children}
+        </View>
+      </Card>
+
+      <ActionSheet
+        visible={menuOpen}
+        title={project.name}
+        subtitle={progress || undefined}
+        actions={menuActions}
+        onClose={() => setMenuOpen(false)}
+      />
+    </>
+  );
+}
+
+/**
+ * A project task in the todo's TaskCard shape: checkbox (done), name, date
+ * badge, notes preview and "⋯" for Edit / Move up / Move down / Delete.
+ * Tapping the row edits; a long press opens the menu. Everything except the
+ * menu button is off while `busy`, as the inline buttons were.
+ */
+function ProjectTaskRow({
+  task,
+  busy,
+  canMoveUp,
+  canMoveDown,
+  onToggleDone,
+  onEdit,
+  onMoveUp,
+  onMoveDown,
+  onDelete,
+}) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [pressed, setPressed] = useState(false);
+  const badge = dateBadge(task);
+
+  const menuActions = [
+    {
+      key: "edit",
+      label: "Edit task",
+      icon: "pencil",
+      disabled: busy,
+      onPress: onEdit,
+    },
+    {
+      key: "up",
+      label: "Move up",
+      icon: "arrow-up",
+      disabled: busy || !canMoveUp,
+      onPress: onMoveUp,
+    },
+    {
+      key: "down",
+      label: "Move down",
+      icon: "arrow-down",
+      disabled: busy || !canMoveDown,
+      onPress: onMoveDown,
+    },
+    {
+      key: "delete",
+      label: "Delete task",
+      icon: "trash-outline",
+      destructive: true,
+      disabled: busy,
+      onPress: onDelete,
+    },
+  ];
+
+  return (
+    <>
+      {/* Checkbox, body and "⋯" are siblings so each is its own
+          screen-reader stop; the whole row highlights while the body is
+          pressed. */}
+      <View style={[styles.taskRow, pressed && styles.taskRowPressed]}>
+        <Checkbox
+          checked={!!task.done}
+          label={task.done ? `Mark "${task.name}" not done` : `Mark "${task.name}" done`}
+          onPress={onToggleDone}
+          disabled={busy}
+          style={styles.checkbox}
+        />
+        <Pressable
+          onPress={onEdit}
+          onLongPress={() => setMenuOpen(true)}
+          onPressIn={() => setPressed(true)}
+          onPressOut={() => setPressed(false)}
+          disabled={busy}
+          accessibilityRole="button"
+          accessibilityLabel={`${task.name}${task.done ? ", done" : ""}, ${
+            badge.label
+          }`}
+          accessibilityHint="Opens the task. Long press for more actions."
+          style={styles.taskBody}
+        >
+          <Text
+            style={[styles.taskName, task.done && styles.taskNameDone]}
+            numberOfLines={2}
+          >
+            {task.name}
+          </Text>
+          <View style={styles.badgeRow}>
+            <Badge label={badge.label} tone={badge.tone} icon={badge.icon} />
+          </View>
+          {task.notes ? (
+            <Text style={styles.taskNotes} numberOfLines={1}>
+              {task.notes}
+            </Text>
+          ) : null}
+        </Pressable>
+        <IconButton
+          icon="ellipsis-horizontal"
+          label={`More actions for ${task.name}`}
+          onPress={() => setMenuOpen(true)}
+        />
+      </View>
+
+      <ActionSheet
+        visible={menuOpen}
+        title={task.name}
+        subtitle={badge.label}
+        actions={menuActions}
+        onClose={() => setMenuOpen(false)}
+      />
+    </>
+  );
+}
+
 const styles = StyleSheet.create({
-  centered: {
-    alignItems: "center",
-    paddingVertical: 32,
+  loading: {
+    flex: 0,
   },
-  loadingText: {
-    marginTop: 8,
-    fontSize: 14,
-    color: "#656d76",
+  card: {
+    marginBottom: spacing.lg,
   },
-  errorBar: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    backgroundColor: "#fef2f2",
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: "#fde8e8",
-  },
-  errorText: {
-    fontSize: 13,
-    color: "#e74c3c",
-    flex: 1,
-    marginRight: 8,
-  },
-  section: {
-    marginBottom: 24,
-    borderWidth: 1,
-    borderColor: "#eaeef2",
-    borderRadius: 10,
-    backgroundColor: "#fff",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
+  cardClip: {
+    borderRadius: radii.lg,
     overflow: "hidden",
   },
-  headerRow: {
+  header: {
     flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: "#eaeef2",
-    backgroundColor: "#f6f8fa",
+    alignItems: "flex-start",
+    gap: spacing.xs,
+    paddingLeft: spacing.lg,
+    paddingRight: spacing.xs,
+    paddingVertical: spacing.xs,
   },
-  headerName: {
+  headerText: {
     flex: 1,
-    fontSize: 18,
-    fontWeight: "600",
-    color: "#1f2328",
+    paddingVertical: spacing.sm + 2,
   },
-  headerActions: {
+  projectName: {
+    ...type.headline,
+  },
+  metaRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 2,
+    gap: spacing.sm,
+    marginTop: spacing.xs + 2,
   },
-  headerBtn: {
-    padding: 6,
-    borderRadius: 6,
+  metaText: {
+    ...type.caption,
   },
-  progressBadge: {
-    fontSize: 11,
-    fontWeight: "600",
-    color: "#656d76",
-    borderWidth: 1,
-    borderColor: "#d0d7de",
-    borderRadius: 999,
-    paddingVertical: 2,
-    paddingHorizontal: 8,
-    marginRight: 4,
-    overflow: "hidden",
+  progress: {
+    flex: 1,
+    maxWidth: 160,
   },
-  taskList: {
-    paddingHorizontal: 14,
-  },
-  /* Task rows mirror the todo's TaskCard styling (square checkbox, inline
-     ECD badge, "→ notes" line, borderless action icons) so the two lists
-     feel identical. */
+  /* Task rows mirror the todo's TaskCard (checkbox, name, inline badge,
+     notes line, "⋯" menu) so the two lists feel identical. */
   taskRow: {
     flexDirection: "row",
     alignItems: "flex-start",
-    gap: 10,
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: "#eaeef2",
+    paddingVertical: spacing.xs,
+    paddingRight: spacing.xs,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.divider,
+    backgroundColor: colors.surface,
   },
-  taskRowDone: {
-    opacity: 0.6,
+  taskRowPressed: {
+    backgroundColor: colors.surfaceMuted,
   },
-  taskRowLast: {
-    borderBottomWidth: 0,
+  checkbox: {
+    marginLeft: spacing.xs,
   },
-  taskCheck: {
-    width: 22,
-    height: 22,
-    borderRadius: 4,
-    borderWidth: 2,
-    borderColor: "#d0d7de",
-    justifyContent: "center",
-    alignItems: "center",
-    marginTop: 2,
-  },
-  taskCheckDone: {
-    borderColor: "#6200ee",
-    backgroundColor: "#6200ee",
-  },
-  taskMain: {
+  taskBody: {
     flex: 1,
-  },
-  taskLabelRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    flexWrap: "wrap",
-    gap: 6,
+    paddingVertical: spacing.sm + 3,
+    paddingRight: spacing.xs,
   },
   taskName: {
-    fontSize: 15,
-    fontWeight: "500",
-    color: "#1f2328",
+    ...type.callout,
+    lineHeight: 21,
   },
   taskNameDone: {
     textDecorationLine: "line-through",
-    color: "#656d76",
+    color: colors.textTertiary,
   },
-  taskEcdBadge: {
-    backgroundColor: "#f0f0f0",
-    borderRadius: 10,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-  },
-  taskEcdText: {
-    fontSize: 11,
-    color: "#656d76",
-    fontWeight: "500",
+  badgeRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "center",
+    gap: spacing.xs + 2,
+    marginTop: spacing.xs + 2,
   },
   taskNotes: {
-    fontSize: 13,
-    color: "#656d76",
-    marginTop: 3,
-    fontStyle: "italic",
-  },
-  taskActions: {
-    flexDirection: "row",
-    gap: 2,
-  },
-  actionBtn: {
-    padding: 6,
-    borderRadius: 6,
-  },
-  busyBtn: {
-    opacity: 0.4,
+    ...type.footnote,
+    marginTop: spacing.xs,
   },
   noTasksText: {
-    fontSize: 13,
+    ...type.footnote,
     fontStyle: "italic",
-    color: "#656d76",
-    paddingVertical: 10,
-  },
-  emptyText: {
-    textAlign: "center",
-    fontSize: 14,
-    color: "#656d76",
-    paddingVertical: 24,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.divider,
   },
 });

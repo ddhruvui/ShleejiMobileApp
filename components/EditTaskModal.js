@@ -1,17 +1,10 @@
 import React, { useState, useRef, useEffect } from "react";
-import {
-  Modal,
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  StyleSheet,
-  ScrollView,
-  KeyboardAvoidingView,
-  Platform,
-} from "react-native";
-import EcdPicker from "./EcdPicker";
+import { View, Text, StyleSheet } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import EcdPicker, { formatDateToISO } from "./EcdPicker";
+import { Sheet, SheetActions, Button, TextField, FieldLabel } from "./ui";
 import { buildEcdFromInputs, isPushedLater } from "../utils/ecd";
+import { colors, radii, spacing, type } from "../theme";
 
 function formatDate(dateStr) {
   const d = new Date(dateStr);
@@ -26,7 +19,7 @@ function detectInitialState(ecd) {
   const today = new Date();
   const defaults = {
     mode: "none",
-    dateVal: today.toISOString().slice(0, 10),
+    dateVal: formatDateToISO(today), // local date, not UTC
     dowVal: ["Mon"],
     domVal: [1],
     yearVal: `${today.getDate()}/${today.getMonth() + 1}/${today.getFullYear()}`,
@@ -86,7 +79,7 @@ export default function EditTaskModal({
       setYearVal(init.yearVal);
       setReason("");
       setFormError(null);
-      setTimeout(() => textareaRef.current?.focus(), 100);
+      setTimeout(() => textareaRef.current?.focus(), 300);
     }
   }, [visible, taskName, notes, ecd]);
 
@@ -147,281 +140,120 @@ export default function EditTaskModal({
     });
   }
 
+  const meta =
+    createdAt && updatedAt
+      ? `Created ${formatDate(createdAt)} · Updated ${formatDate(updatedAt)}`
+      : undefined;
+
   return (
-    <Modal
+    <Sheet
       visible={visible}
-      transparent
-      animationType="fade"
-      onRequestClose={onCancel}
+      onClose={onCancel}
+      title="Edit task"
+      subtitle={meta}
+      footer={
+        <SheetActions>
+          <Button title="Cancel" variant="secondary" size="lg" onPress={onCancel} style={{ flex: 1 }} />
+          <Button title="Save" size="lg" onPress={handleSave} style={{ flex: 2 }} />
+        </SheetActions>
+      }
     >
-      <TouchableOpacity
-        style={styles.overlay}
-        activeOpacity={1}
-        onPress={onCancel}
-      >
-        <KeyboardAvoidingView
-          behavior={Platform.OS === "ios" ? "padding" : "height"}
-          style={styles.keyboardView}
-        >
-          <TouchableOpacity
-            activeOpacity={1}
-            onPress={(e) => e.stopPropagation()}
-          >
-            <View style={styles.modal}>
-              <ScrollView showsVerticalScrollIndicator={false}>
-                <Text style={styles.title}>{taskName}</Text>
+      {formError && <Text style={styles.errorText}>{formError}</Text>}
 
-                <TextInput
-                  style={[
-                    styles.nameInput,
-                    goalManaged && styles.nameInputLocked,
-                  ]}
-                  value={nameDraft}
-                  onChangeText={setNameDraft}
-                  placeholder="Task name"
-                  placeholderTextColor="#999"
-                  editable={!goalManaged}
-                />
+      <TextField
+        label="Task name"
+        value={nameDraft}
+        onChangeText={setNameDraft}
+        placeholder="Task name"
+        editable={!goalManaged}
+        helper={
+          goalManaged
+            ? "Habit managed by its goal — name and schedule are locked. Change its days in the Goals view."
+            : undefined
+        }
+      />
 
-                {goalManaged && (
-                  <Text style={styles.lockedHint}>
-                    Habit managed by its goal — name and schedule are locked.
-                    Change its days in the Goals view.
-                  </Text>
-                )}
+      {goalManaged ? (
+        <View style={styles.lockedWrap}>
+          <FieldLabel>Due</FieldLabel>
+          <View style={styles.lockedEcd}>
+            <Ionicons name="lock-closed" size={14} color={colors.successText} />
+            <Text style={styles.lockedEcdText}>↻ {goalSchedule}, for life</Text>
+          </View>
+        </View>
+      ) : (
+        <EcdPicker
+          mode={mode}
+          setMode={setMode}
+          dateVal={dateVal}
+          setDateVal={setDateVal}
+          dowVal={dowVal}
+          setDowVal={setDowVal}
+          domVal={domVal}
+          setDomVal={setDomVal}
+          yearVal={yearVal}
+          setYearVal={setYearVal}
+        />
+      )}
 
-                {formError && <Text style={styles.errorText}>{formError}</Text>}
+      {isPostpone && (
+        <View style={styles.postpone}>
+          <TextField
+            label="Why postpone? (optional)"
+            value={reason}
+            onChangeText={setReason}
+            placeholder="e.g. blocked on a dependency, sick, real emergency…"
+            multiline
+            minHeight={64}
+            helper="No reason is logged as procrastination; a valid one counts as a legitimate deferral."
+            style={{ marginBottom: 0 }}
+          />
+        </View>
+      )}
 
-                {createdAt && updatedAt && (
-                  <View style={styles.metaRow}>
-                    <Text style={styles.metaText}>
-                      <Text style={styles.metaLabel}>Created </Text>
-                      {formatDate(createdAt)}
-                    </Text>
-                    <Text style={styles.metaSep}> · </Text>
-                    <Text style={styles.metaText}>
-                      <Text style={styles.metaLabel}>Updated </Text>
-                      {formatDate(updatedAt)}
-                    </Text>
-                  </View>
-                )}
-
-                {goalManaged ? (
-                  <Text style={styles.lockedEcdText}>
-                    ↻ {goalSchedule}, for life
-                  </Text>
-                ) : (
-                  <EcdPicker
-                    mode={mode}
-                    setMode={setMode}
-                    dateVal={dateVal}
-                    setDateVal={setDateVal}
-                    dowVal={dowVal}
-                    setDowVal={setDowVal}
-                    domVal={domVal}
-                    setDomVal={setDomVal}
-                    yearVal={yearVal}
-                    setYearVal={setYearVal}
-                  />
-                )}
-
-                {isPostpone && (
-                  <View style={styles.reasonWrap}>
-                    <Text style={styles.reasonLabel}>
-                      Why postpone? (optional)
-                    </Text>
-                    <TextInput
-                      style={styles.reasonInput}
-                      value={reason}
-                      onChangeText={setReason}
-                      placeholder="e.g. blocked on a dependency, sick, real emergency…"
-                      placeholderTextColor="#999"
-                      multiline
-                      textAlignVertical="top"
-                    />
-                    <Text style={styles.reasonHint}>
-                      No reason is logged as procrastination; a valid one counts
-                      as a legitimate deferral.
-                    </Text>
-                  </View>
-                )}
-
-                <TextInput
-                  ref={textareaRef}
-                  style={styles.notesInput}
-                  value={draft}
-                  onChangeText={setDraft}
-                  placeholder="Add notes…"
-                  placeholderTextColor="#999"
-                  multiline
-                  numberOfLines={5}
-                  textAlignVertical="top"
-                />
-
-                <View style={styles.actions}>
-                  <TouchableOpacity style={styles.cancelBtn} onPress={onCancel}>
-                    <Text style={styles.cancelText}>Cancel</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={styles.confirmBtn}
-                    onPress={handleSave}
-                  >
-                    <Text style={styles.confirmText}>Save</Text>
-                  </TouchableOpacity>
-                </View>
-              </ScrollView>
-            </View>
-          </TouchableOpacity>
-        </KeyboardAvoidingView>
-      </TouchableOpacity>
-    </Modal>
+      <TextField
+        ref={textareaRef}
+        label="Notes"
+        value={draft}
+        onChangeText={setDraft}
+        placeholder="Add notes…"
+        multiline
+        minHeight={100}
+      />
+    </Sheet>
   );
 }
 
 const styles = StyleSheet.create({
-  overlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.5)",
-    justifyContent: "center",
+  errorText: {
+    ...type.footnote,
+    color: colors.dangerText,
+    backgroundColor: colors.dangerSoft,
+    padding: spacing.sm + 2,
+    borderRadius: 10,
+    marginBottom: spacing.md,
+    overflow: "hidden",
+  },
+  lockedWrap: {
+    marginBottom: spacing.lg,
+  },
+  lockedEcd: {
+    flexDirection: "row",
     alignItems: "center",
-    padding: 16,
-  },
-  keyboardView: {
-    width: "100%",
-    alignItems: "center",
-  },
-  modal: {
-    backgroundColor: "#fff",
-    borderRadius: 12,
-    padding: 24,
-    width: 360,
-    maxWidth: "95%",
-    maxHeight: "90%",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
-    elevation: 8,
-  },
-  title: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: "#1f2328",
-    marginBottom: 12,
-  },
-  nameInput: {
-    borderWidth: 1,
-    borderColor: "#d0d7de",
-    borderRadius: 8,
+    gap: spacing.sm,
+    backgroundColor: colors.successSoft,
+    borderRadius: radii.md,
     paddingHorizontal: 14,
-    paddingVertical: 12,
-    fontSize: 16,
-    color: "#1f2328",
-    marginBottom: 12,
-    backgroundColor: "#fafafa",
-  },
-  nameInputLocked: {
-    color: "#656d76",
-  },
-  lockedHint: {
-    fontSize: 12,
-    color: "#656d76",
-    fontStyle: "italic",
-    marginBottom: 10,
+    minHeight: 44,
   },
   lockedEcdText: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#1a7f37",
-    marginBottom: 16,
+    ...type.callout,
+    color: colors.successText,
   },
-  errorText: {
-    color: "#e74c3c",
-    fontSize: 13,
-    marginBottom: 10,
-  },
-  metaRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 16,
-    flexWrap: "wrap",
-  },
-  metaText: {
-    fontSize: 12,
-    color: "#656d76",
-  },
-  metaLabel: {
-    fontWeight: "600",
-  },
-  metaSep: {
-    color: "#656d76",
-    fontSize: 12,
-  },
-  reasonWrap: {
-    marginBottom: 16,
-  },
-  reasonLabel: {
-    fontSize: 12,
-    fontWeight: "600",
-    color: "#656d76",
-    textTransform: "uppercase",
-    letterSpacing: 0.4,
-    marginBottom: 8,
-  },
-  reasonInput: {
-    borderWidth: 1,
-    borderColor: "#d0d7de",
-    borderRadius: 8,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    fontSize: 15,
-    color: "#1f2328",
-    minHeight: 64,
-    backgroundColor: "#fafafa",
-  },
-  reasonHint: {
-    fontSize: 12,
-    color: "#656d76",
-    fontStyle: "italic",
-    marginTop: 6,
-  },
-  notesInput: {
-    borderWidth: 1,
-    borderColor: "#d0d7de",
-    borderRadius: 8,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    fontSize: 15,
-    color: "#1f2328",
-    minHeight: 100,
-    backgroundColor: "#fafafa",
-    marginBottom: 20,
-  },
-  actions: {
-    flexDirection: "row",
-    justifyContent: "flex-end",
-    gap: 10,
-  },
-  cancelBtn: {
-    paddingVertical: 10,
-    paddingHorizontal: 18,
-    borderRadius: 8,
-    backgroundColor: "#f0f0f0",
-  },
-  cancelText: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#555",
-  },
-  confirmBtn: {
-    paddingVertical: 10,
-    paddingHorizontal: 18,
-    borderRadius: 8,
-    backgroundColor: "#6200ee",
-  },
-  confirmText: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#fff",
+  postpone: {
+    backgroundColor: colors.warningSoft,
+    borderRadius: radii.lg,
+    padding: spacing.md,
+    marginBottom: spacing.lg,
   },
 });

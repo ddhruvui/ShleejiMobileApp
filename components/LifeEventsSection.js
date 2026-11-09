@@ -4,22 +4,27 @@ import React, {
   useCallback,
   useImperativeHandle,
 } from "react";
-import {
-  StyleSheet,
-  View,
-  Text,
-  TouchableOpacity,
-  ActivityIndicator,
-} from "react-native";
-import { Ionicons } from "@expo/vector-icons";
+import { StyleSheet, View, Text, Pressable } from "react-native";
 import * as lifeEventsApi from "../api/lifeevents";
 import * as tasksApi from "../api/tasks";
 import LifeEventModal from "./LifeEventModal";
 import ConfirmModal from "./ConfirmModal";
+import {
+  ActionSheet,
+  Badge,
+  Banner,
+  Card,
+  Checkbox,
+  EmptyState,
+  IconButton,
+  LoadingState,
+} from "./ui";
+import { colors, spacing, type } from "../theme";
 
 /**
- * "7/3" → "↻ 7 Mar" — the recurring marker matches the todo's recurring-ECD
- * display; dates are parsed manually (never via Date) for timezone safety.
+ * "7/3" → "7 Mar" — the badge's repeat icon carries the recurring marker
+ * (matching the todo's recurring-ECD badge); dates are parsed manually
+ * (never via Date) for timezone safety. The stored "D/M" value is untouched.
  */
 const SHORT_MONTHS = [
   "Jan",
@@ -38,7 +43,7 @@ const SHORT_MONTHS = [
 
 function formatLifeEventDate(date) {
   const [day, month] = date.split("/").map(Number);
-  return `↻ ${day} ${SHORT_MONTHS[month - 1]}`;
+  return `${day} ${SHORT_MONTHS[month - 1]}`;
 }
 
 export default function LifeEventsSection({ onTasksChanged, addRef }) {
@@ -49,6 +54,10 @@ export default function LifeEventsSection({ onTasksChanged, addRef }) {
   // Modal states
   const [modalState, setModalState] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
+  // "⋯" menu: the id is kept while the sheet animates closed so its title
+  // doesn't blank out mid-dismiss.
+  const [menuId, setMenuId] = useState(null);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   // This panel has no toolbar of its own: TodoScreen's title-bar "+" opens the
   // add-life-event modal through this handle while the Life Events view shows.
@@ -71,6 +80,11 @@ export default function LifeEventsSection({ onTasksChanged, addRef }) {
   useEffect(() => {
     loadEvents();
   }, [loadEvents]);
+
+  const openMenu = (id) => {
+    setMenuId(id);
+    setMenuOpen(true);
+  };
 
   /* ── Life event CRUD (no optimistic updates: mutate via API, then refetch) ── */
 
@@ -144,47 +158,91 @@ export default function LifeEventsSection({ onTasksChanged, addRef }) {
   /* ── Render ── */
 
   if (loading) {
-    return (
-      <View style={styles.centered}>
-        <ActivityIndicator size="small" color="#6200ee" />
-        <Text style={styles.loadingText}>Loading life events…</Text>
-      </View>
-    );
+    return <LoadingState label="Loading life events…" style={styles.loading} />;
   }
+
+  // Rows stay in the server's priority order (the user's own order, changed
+  // with Move up/down) — deliberately not regrouped by upcoming month.
+  const menuIndex = events.findIndex((e) => e._id === menuId);
+  const menuEvent = menuIndex >= 0 ? events[menuIndex] : null;
+  const menuActions = menuEvent
+    ? [
+        {
+          key: "edit",
+          label: "Edit life event",
+          icon: "pencil",
+          onPress: () => setModalState({ mode: "edit", lifeEvent: menuEvent }),
+        },
+        {
+          key: "up",
+          label: "Move up",
+          icon: "arrow-up",
+          disabled: menuIndex === 0,
+          onPress: () => handleMove(menuEvent, -1),
+        },
+        {
+          key: "down",
+          label: "Move down",
+          icon: "arrow-down",
+          disabled: menuIndex === events.length - 1,
+          onPress: () => handleMove(menuEvent, 1),
+        },
+        {
+          key: "delete",
+          label: "Delete life event",
+          icon: "trash-outline",
+          destructive: true,
+          onPress: () => setDeleteTarget(menuEvent),
+        },
+      ]
+    : [];
 
   return (
     <View>
       {error && (
-        <View style={styles.errorBar}>
-          <Text style={styles.errorText}>Action failed: {error}</Text>
-          <TouchableOpacity onPress={() => setError(null)}>
-            <Ionicons name="close" size={18} color="#e74c3c" />
-          </TouchableOpacity>
-        </View>
+        <Banner tone="danger" onDismiss={() => setError(null)}>
+          {`Action failed: ${error}`}
+        </Banner>
       )}
 
       {events.length > 0 && (
-        <View style={styles.list}>
-          {events.map((event, idx) => (
-            <View
-              key={event._id}
-              style={[
-                styles.row,
-                event.done && styles.rowDone,
-                idx === events.length - 1 && styles.rowLast,
-              ]}
-            >
-              {/* Same square checkbox as the todo's TaskCard */}
-              <TouchableOpacity
-                style={[styles.check, event.done && styles.checkDone]}
-                onPress={() => handleToggleDone(event)}
+        <Card padded={false} style={styles.list}>
+          {events.map((event, idx) => {
+            const when = formatLifeEventDate(event.date);
+            return (
+              <View
+                key={event._id}
+                style={[styles.row, idx > 0 && styles.rowDivider]}
               >
-                {event.done && (
-                  <Ionicons name="checkmark" size={14} color="#fff" />
-                )}
-              </TouchableOpacity>
-              <View style={styles.main}>
-                <View style={styles.labelRow}>
+                {/* Same square checkbox as the todo's TaskCard */}
+                <Checkbox
+                  checked={!!event.done}
+                  label={
+                    event.done
+                      ? `Mark "${event.name}" not done`
+                      : `Mark "${event.name}" done`
+                  }
+                  onPress={() => handleToggleDone(event)}
+                  style={styles.checkbox}
+                />
+                <Pressable
+                  testID={`lifeevent-${event._id}`}
+                  onPress={() =>
+                    setModalState({ mode: "edit", lifeEvent: event })
+                  }
+                  onLongPress={() => openMenu(event._id)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${event.name}${
+                    event.done ? ", done" : ""
+                  }, every year on ${when}${
+                    event.todoTaskId ? ", in todo" : ""
+                  }`}
+                  accessibilityHint="Opens the life event. Long press for more actions."
+                  style={({ pressed }) => [
+                    styles.main,
+                    pressed && styles.mainPressed,
+                  ]}
+                >
                   <Text
                     style={[styles.name, event.done && styles.nameDone]}
                     numberOfLines={2}
@@ -192,72 +250,46 @@ export default function LifeEventsSection({ onTasksChanged, addRef }) {
                     {event.name}
                   </Text>
                   {/* Same slot the todo uses for the ECD badge */}
-                  <View style={styles.dateBadge}>
-                    <Text style={styles.dateText}>
-                      {formatLifeEventDate(event.date)}
-                    </Text>
+                  <View style={styles.metaRow}>
+                    <Badge label={when} icon="repeat" />
+                    {!!event.todoTaskId && (
+                      <Badge label="in todo" tone="primary" />
+                    )}
                   </View>
-                  {!!event.todoTaskId && (
-                    <View style={styles.inTodoBadge}>
-                      <Text style={styles.inTodoText}>in todo</Text>
-                    </View>
-                  )}
-                </View>
+                </Pressable>
+                <IconButton
+                  icon="ellipsis-horizontal"
+                  label={`More actions for ${event.name}`}
+                  onPress={() => openMenu(event._id)}
+                />
               </View>
-              <View style={styles.actions}>
-                <TouchableOpacity
-                  style={[styles.actionBtn, idx === 0 && styles.disabledBtn]}
-                  onPress={() => handleMove(event, -1)}
-                  disabled={idx === 0}
-                >
-                  <Ionicons
-                    name="arrow-up"
-                    size={16}
-                    color={idx === 0 ? "#ccc" : "#656d76"}
-                  />
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[
-                    styles.actionBtn,
-                    idx === events.length - 1 && styles.disabledBtn,
-                  ]}
-                  onPress={() => handleMove(event, 1)}
-                  disabled={idx === events.length - 1}
-                >
-                  <Ionicons
-                    name="arrow-down"
-                    size={16}
-                    color={idx === events.length - 1 ? "#ccc" : "#656d76"}
-                  />
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.actionBtn}
-                  onPress={() =>
-                    setModalState({ mode: "edit", lifeEvent: event })
-                  }
-                >
-                  <Ionicons name="pencil" size={16} color="#656d76" />
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.actionBtn}
-                  onPress={() => setDeleteTarget(event)}
-                >
-                  <Ionicons name="trash-outline" size={16} color="#e74c3c" />
-                </TouchableOpacity>
-              </View>
-            </View>
-          ))}
-        </View>
+            );
+          })}
+        </Card>
       )}
 
       {events.length === 0 && (
-        <Text style={styles.emptyText}>
-          No life events yet — add one! A life event is a date that repeats
-          every year (like a birthday); it lands in your todo on the day.
-        </Text>
+        <EmptyState
+          compact
+          icon="gift-outline"
+          title="No life events yet — add one!"
+          message="A life event is a date that repeats every year (like a birthday); it lands in your todo on the day."
+        />
       )}
 
       {/* Modals */}
+      <ActionSheet
+        visible={menuOpen}
+        title={menuEvent?.name}
+        subtitle={
+          menuEvent
+            ? `Every year on ${formatLifeEventDate(menuEvent.date)}`
+            : undefined
+        }
+        actions={menuActions}
+        onClose={() => setMenuOpen(false)}
+      />
+
       <LifeEventModal
         visible={!!modalState}
         lifeEvent={
@@ -278,131 +310,49 @@ export default function LifeEventsSection({ onTasksChanged, addRef }) {
 }
 
 const styles = StyleSheet.create({
-  centered: {
-    alignItems: "center",
-    paddingVertical: 32,
-  },
-  loadingText: {
-    marginTop: 8,
-    fontSize: 14,
-    color: "#656d76",
-  },
-  errorBar: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    backgroundColor: "#fef2f2",
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: "#fde8e8",
-  },
-  errorText: {
-    fontSize: 13,
-    color: "#e74c3c",
-    flex: 1,
-    marginRight: 8,
+  loading: {
+    flex: 0,
+    paddingVertical: spacing.xxxl,
   },
   list: {
-    marginBottom: 24,
-    borderWidth: 1,
-    borderColor: "#eaeef2",
-    borderRadius: 10,
-    backgroundColor: "#fff",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
-    overflow: "hidden",
-    paddingHorizontal: 14,
+    marginBottom: spacing.xxl,
   },
-  /* Rows mirror the todo's TaskCard styling (square checkbox, inline date
-     badge, borderless action icons) so the two lists feel identical. */
+  /* Rows mirror the todo's TaskCard (square checkbox, inline date badge,
+     "⋯" menu) so the two lists feel identical. */
   row: {
     flexDirection: "row",
     alignItems: "flex-start",
-    gap: 10,
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: "#eaeef2",
+    paddingVertical: spacing.xs,
+    paddingRight: spacing.xs,
   },
-  rowDone: {
-    opacity: 0.6,
+  rowDivider: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.divider,
   },
-  rowLast: {
-    borderBottomWidth: 0,
-  },
-  check: {
-    width: 22,
-    height: 22,
-    borderRadius: 4,
-    borderWidth: 2,
-    borderColor: "#d0d7de",
-    justifyContent: "center",
-    alignItems: "center",
-    marginTop: 2,
-  },
-  checkDone: {
-    borderColor: "#6200ee",
-    backgroundColor: "#6200ee",
+  checkbox: {
+    marginLeft: spacing.xs,
   },
   main: {
     flex: 1,
+    paddingVertical: spacing.md,
+    paddingRight: spacing.xs,
   },
-  labelRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    flexWrap: "wrap",
-    gap: 6,
+  mainPressed: {
+    opacity: 0.6,
   },
   name: {
-    fontSize: 15,
+    ...type.callout,
     fontWeight: "500",
-    color: "#1f2328",
   },
   nameDone: {
     textDecorationLine: "line-through",
-    color: "#656d76",
+    color: colors.textTertiary,
   },
-  dateBadge: {
-    backgroundColor: "#f0f0f0",
-    borderRadius: 10,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-  },
-  dateText: {
-    fontSize: 11,
-    color: "#656d76",
-    fontWeight: "500",
-  },
-  inTodoBadge: {
-    backgroundColor: "#e8f0fe",
-    borderRadius: 10,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-  },
-  inTodoText: {
-    fontSize: 11,
-    color: "#1e88e5",
-    fontWeight: "600",
-  },
-  actions: {
+  metaRow: {
     flexDirection: "row",
-    gap: 2,
-  },
-  actionBtn: {
-    padding: 6,
-    borderRadius: 6,
-  },
-  disabledBtn: {
-    opacity: 0.4,
-  },
-  emptyText: {
-    textAlign: "center",
-    fontSize: 14,
-    color: "#656d76",
-    paddingVertical: 24,
+    flexWrap: "wrap",
+    alignItems: "center",
+    gap: 6,
+    marginTop: 6,
   },
 });

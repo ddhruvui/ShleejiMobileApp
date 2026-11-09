@@ -1,20 +1,19 @@
 import React, { useState, useRef, useEffect } from "react";
-import {
-  Modal,
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  StyleSheet,
-  Platform,
-  ScrollView,
-  KeyboardAvoidingView,
-} from "react-native";
+import { View, Text, Pressable, StyleSheet, Platform } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 import DateTimePicker from "@react-native-community/datetimepicker";
+import { Sheet, SheetActions, Button, Chip, TextField, FieldLabel } from "./ui";
+import { dateShortcuts, formatDateToISO, prettyDateKey } from "./EcdPicker";
+import { colors, radii, spacing, type, HIT_TARGET } from "../theme";
 
 function todayInputVal() {
   return new Date().toISOString().slice(0, 10);
 }
+
+const DUE_MODES = [
+  { value: "none", label: "None" },
+  { value: "date", label: "Date" },
+];
 
 /**
  * Add/edit a project task: a name plus an optional one-time target date.
@@ -44,22 +43,17 @@ export default function ProjectTaskModal({
       setMode(task && task.date ? "date" : "none");
       setDateVal(task && task.date ? task.date : todayInputVal());
       setShowDatePicker(false);
-      setTimeout(() => nameRef.current?.focus(), 100);
+      setTimeout(() => nameRef.current?.focus(), 250);
     }
   }, [visible, task]);
 
+  // Parsed component-wise (never `new Date("YYYY-MM-DD")`) to avoid a UTC shift
   const getDateForPicker = () => {
     if (dateVal && /^\d{4}-\d{2}-\d{2}$/.test(dateVal)) {
-      return new Date(dateVal + "T00:00:00");
+      const [y, m, d] = dateVal.split("-").map((n) => parseInt(n, 10));
+      return new Date(y, m - 1, d);
     }
     return new Date();
-  };
-
-  const formatDateToISO = (date) => {
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, "0");
-    const day = String(date.getDate()).padStart(2, "0");
-    return `${year}-${month}-${day}`;
   };
 
   const onDateChange = (event, selectedDate) => {
@@ -87,280 +81,161 @@ export default function ProjectTaskModal({
     });
   }
 
+  const shortcuts = dateShortcuts();
+  const dateLabel = prettyDateKey(dateVal) || "Select Date";
+
   return (
-    <Modal
+    <Sheet
       visible={visible}
-      transparent
-      animationType="fade"
-      onRequestClose={onCancel}
+      onClose={onCancel}
+      title={task ? "Edit task" : "Add task"}
+      subtitle={projectName ? `in ${projectName}` : undefined}
+      footer={
+        <SheetActions>
+          <Button
+            title="Cancel"
+            variant="secondary"
+            size="lg"
+            onPress={onCancel}
+            style={{ flex: 1 }}
+          />
+          <Button
+            title={task ? "Save" : "Add task"}
+            size="lg"
+            onPress={handleSubmit}
+            disabled={!name.trim()}
+            loading={busy}
+            style={{ flex: 2 }}
+          />
+        </SheetActions>
+      }
     >
-      <TouchableOpacity
-        style={styles.overlay}
-        activeOpacity={1}
-        onPress={onCancel}
-      >
-        {/* Same shell as the todo's Add/EditTaskModal: without the keyboard
-            avoider + capped scrollable box, the keyboard or the date picker
-            can push the confirm buttons off-screen with no way to reach
-            them — which reads as "cannot add a task" on small screens. */}
-        <KeyboardAvoidingView
-          behavior={Platform.OS === "ios" ? "padding" : "height"}
-          style={styles.keyboardView}
-        >
-          <TouchableOpacity
-            activeOpacity={1}
-            onPress={(e) => e.stopPropagation()}
-          >
-            <View style={styles.modal}>
-              <ScrollView showsVerticalScrollIndicator={false}>
-                <Text style={styles.title}>
-                  {task ? "Edit task" : "Add task"}{" "}
-                  <Text style={styles.titleFolder}>— {projectName}</Text>
-                </Text>
+      <TextField
+        ref={nameRef}
+        label="Task name"
+        placeholder="Task name…"
+        value={name}
+        onChangeText={setName}
+        returnKeyType="done"
+      />
 
-                <TextInput
-                  ref={nameRef}
-                  style={styles.input}
-                  placeholder="Task name…"
-                  placeholderTextColor="#999"
-                  value={name}
-                  onChangeText={setName}
-                  returnKeyType="done"
+      <View style={styles.due}>
+        <FieldLabel>Due</FieldLabel>
+        <View style={styles.chipRow}>
+          {DUE_MODES.map((m) => (
+            <Chip
+              key={m.value}
+              size="sm"
+              label={m.label}
+              selected={mode === m.value}
+              onPress={() => setMode(m.value)}
+              style={styles.chip}
+            />
+          ))}
+        </View>
+
+        {mode === "date" && (
+          <View>
+            <View style={styles.chipRow}>
+              {shortcuts.map((s) => (
+                <Chip
+                  key={s.label}
+                  size="sm"
+                  label={s.label}
+                  selected={dateVal === s.value}
+                  onPress={() => setDateVal(s.value)}
+                  style={styles.chip}
                 />
-
-                <Text style={styles.label}>Due</Text>
-                <View style={styles.modeRow}>
-                  {["none", "date"].map((m) => (
-                    <TouchableOpacity
-                      key={m}
-                      style={[
-                        styles.modeBtn,
-                        mode === m && styles.modeBtnActive,
-                      ]}
-                      onPress={() => setMode(m)}
-                    >
-                      <Text
-                        style={[
-                          styles.modeBtnText,
-                          mode === m && styles.modeBtnTextActive,
-                        ]}
-                      >
-                        {m === "none" ? "None" : "Date"}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-
-                {mode === "date" && (
-                  <View>
-                    <TouchableOpacity
-                      style={styles.dateSelectorBtn}
-                      onPress={() => setShowDatePicker(true)}
-                    >
-                      <Text style={styles.dateSelectorText}>
-                        {dateVal || "Select Date"}
-                      </Text>
-                      <Text style={styles.calendarIcon}>📅</Text>
-                    </TouchableOpacity>
-                    {showDatePicker && (
-                      <DateTimePicker
-                        value={getDateForPicker()}
-                        mode="date"
-                        display={Platform.OS === "ios" ? "spinner" : "default"}
-                        onChange={onDateChange}
-                      />
-                    )}
-                    <Text style={styles.hint}>
-                      Will appear in the todo under "{projectName}"
-                    </Text>
-                  </View>
-                )}
-
-                <Text style={styles.label}>Notes</Text>
-                <TextInput
-                  style={styles.notesInput}
-                  placeholder="Add notes…"
-                  placeholderTextColor="#999"
-                  value={notes}
-                  onChangeText={setNotes}
-                  multiline
-                />
-
-                <View style={styles.actions}>
-                  <TouchableOpacity style={styles.cancelBtn} onPress={onCancel}>
-                    <Text style={styles.cancelText}>Cancel</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[
-                      styles.confirmBtn,
-                      (!name.trim() || busy) && styles.disabledBtn,
-                    ]}
-                    onPress={handleSubmit}
-                    disabled={!name.trim() || busy}
-                  >
-                    <Text style={styles.confirmText}>
-                      {task ? "Save" : "Add task"}
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              </ScrollView>
+              ))}
             </View>
-          </TouchableOpacity>
-        </KeyboardAvoidingView>
-      </TouchableOpacity>
-    </Modal>
+            <Pressable
+              onPress={() => setShowDatePicker(true)}
+              accessibilityRole="button"
+              accessibilityLabel={`Pick date, ${dateLabel}`}
+              style={({ pressed }) => [
+                styles.dateBtn,
+                pressed && styles.dateBtnPressed,
+              ]}
+            >
+              <Text style={styles.dateText}>{dateLabel}</Text>
+              <Ionicons
+                name="calendar-outline"
+                size={20}
+                color={colors.primary}
+              />
+            </Pressable>
+            {showDatePicker && (
+              <DateTimePicker
+                value={getDateForPicker()}
+                mode="date"
+                display={Platform.OS === "ios" ? "spinner" : "default"}
+                onChange={onDateChange}
+              />
+            )}
+            <View style={styles.hintRow}>
+              <Ionicons
+                name="arrow-redo-outline"
+                size={14}
+                color={colors.textSecondary}
+              />
+              <Text style={styles.hint}>
+                Will appear in the todo under "{projectName}"
+              </Text>
+            </View>
+          </View>
+        )}
+      </View>
+
+      <TextField
+        label="Notes"
+        placeholder="Add notes…"
+        value={notes}
+        onChangeText={setNotes}
+        multiline
+        minHeight={88}
+      />
+    </Sheet>
   );
 }
 
 const styles = StyleSheet.create({
-  overlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.5)",
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 24,
+  due: {
+    marginBottom: spacing.lg,
   },
-  keyboardView: {
-    width: "100%",
-    alignItems: "center",
-  },
-  modal: {
-    backgroundColor: "#fff",
-    borderRadius: 12,
-    padding: 24,
-    width: 340,
-    maxWidth: "90%",
-    maxHeight: "90%",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
-    elevation: 8,
-  },
-  title: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: "#1f2328",
-    marginBottom: 16,
-  },
-  titleFolder: {
-    fontWeight: "400",
-    color: "#656d76",
-    fontSize: 15,
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: "#d0d7de",
-    borderRadius: 8,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    fontSize: 16,
-    color: "#1f2328",
-    marginBottom: 16,
-    backgroundColor: "#fafafa",
-  },
-  label: {
-    fontSize: 12,
-    fontWeight: "600",
-    color: "#656d76",
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
-    marginBottom: 8,
-  },
-  notesInput: {
-    borderWidth: 1,
-    borderColor: "#d0d7de",
-    borderRadius: 8,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    fontSize: 15,
-    color: "#1f2328",
-    marginBottom: 8,
-    backgroundColor: "#fafafa",
-    minHeight: 72,
-    textAlignVertical: "top",
-  },
-  modeRow: {
+  chipRow: {
     flexDirection: "row",
-    gap: 6,
-    marginBottom: 10,
+    flexWrap: "wrap",
+    gap: spacing.sm - 2,
+    marginBottom: spacing.sm,
   },
-  modeBtn: {
-    paddingVertical: 6,
-    paddingHorizontal: 14,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: "#d0d7de",
-    backgroundColor: "#f6f8fa",
+  chip: {
+    minHeight: HIT_TARGET,
   },
-  modeBtnActive: {
-    backgroundColor: "#6200ee",
-    borderColor: "#6200ee",
-  },
-  modeBtnText: {
-    fontSize: 13,
-    fontWeight: "500",
-    color: "#555",
-  },
-  modeBtnTextActive: {
-    color: "#fff",
-  },
-  dateSelectorBtn: {
+  dateBtn: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    borderWidth: 1,
-    borderColor: "#d0d7de",
-    borderRadius: 8,
+    minHeight: 48,
+    borderRadius: radii.md,
     paddingHorizontal: 14,
-    paddingVertical: 12,
-    backgroundColor: "#fafafa",
-    marginBottom: 8,
+    backgroundColor: colors.surfaceMuted,
+    marginBottom: spacing.sm,
   },
-  dateSelectorText: {
-    fontSize: 15,
-    color: "#1f2328",
+  dateBtnPressed: {
+    backgroundColor: colors.surfaceSunken,
+  },
+  dateText: {
+    ...type.body,
     flex: 1,
   },
-  calendarIcon: {
-    fontSize: 20,
-    marginLeft: 8,
+  hintRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginTop: spacing.xs,
   },
   hint: {
-    fontSize: 12,
-    color: "#656d76",
-    fontStyle: "italic",
-    marginBottom: 8,
-  },
-  actions: {
-    flexDirection: "row",
-    justifyContent: "flex-end",
-    gap: 10,
-    marginTop: 12,
-  },
-  cancelBtn: {
-    paddingVertical: 10,
-    paddingHorizontal: 18,
-    borderRadius: 8,
-    backgroundColor: "#f0f0f0",
-  },
-  cancelText: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#555",
-  },
-  confirmBtn: {
-    paddingVertical: 10,
-    paddingHorizontal: 18,
-    borderRadius: 8,
-    backgroundColor: "#6200ee",
-  },
-  disabledBtn: {
-    opacity: 0.5,
-  },
-  confirmText: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#fff",
+    ...type.footnote,
+    flex: 1,
   },
 });

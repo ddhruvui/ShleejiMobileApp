@@ -1,16 +1,20 @@
 import React, { useEffect, useState } from "react";
-import {
-  Modal,
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  StyleSheet,
-} from "react-native";
+import { Modal, View, Text, Pressable, StyleSheet, KeyboardAvoidingView, Platform } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import { Button, TextField } from "./ui";
+import { colors, radii, shadows, spacing, type } from "../theme";
 
+/**
+ * Centred confirmation for irreversible actions (delete, reset). Unlike forms
+ * — which use bottom sheets — this stays a centred dialog on purpose: it is a
+ * deliberate interruption that asks for focused reading before committing.
+ */
 export default function ConfirmModal({
   visible,
   message,
+  title = "Are you sure?",
+  confirmLabel = "Delete",
+  icon = "trash-outline",
   onConfirm,
   onCancel,
   // When true, show a required reason field; Delete stays disabled until it is filled.
@@ -37,48 +41,56 @@ export default function ConfirmModal({
       visible={visible}
       transparent
       animationType="fade"
+      statusBarTranslucent
       onRequestClose={onCancel}
     >
-      <TouchableOpacity
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
         style={styles.overlay}
-        activeOpacity={1}
-        onPress={onCancel}
       >
-        <TouchableOpacity
-          activeOpacity={1}
-          onPress={(e) => e.stopPropagation()}
-        >
-          <View style={styles.modal}>
-            <Text style={styles.message}>{message}</Text>
-            {requireReason && (
-              <View style={styles.reasonWrap}>
-                <Text style={styles.reasonLabel}>{reasonLabel}</Text>
-                <TextInput
-                  style={styles.reasonInput}
-                  value={reason}
-                  onChangeText={setReason}
-                  placeholder="e.g. no longer needed, too big, ran out of time…"
-                  placeholderTextColor="#999"
-                  multiline
-                  autoFocus
-                />
-              </View>
-            )}
-            <View style={styles.actions}>
-              <TouchableOpacity style={styles.cancelBtn} onPress={onCancel}>
-                <Text style={styles.cancelText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.deleteBtn, !canConfirm && styles.deleteBtnDisabled]}
-                onPress={handleConfirm}
-                disabled={!canConfirm}
-              >
-                <Text style={styles.deleteText}>Delete</Text>
-              </TouchableOpacity>
-            </View>
+        <Pressable
+          style={StyleSheet.absoluteFill}
+          onPress={onCancel}
+          accessibilityRole="button"
+          accessibilityLabel="Cancel"
+        />
+        <View style={styles.dialog} accessibilityViewIsModal>
+          <View style={styles.iconWrap}>
+            <Ionicons name={icon} size={24} color={colors.danger} />
           </View>
-        </TouchableOpacity>
-      </TouchableOpacity>
+          <Text style={styles.title} accessibilityRole="header">
+            {title}
+          </Text>
+          <Text style={styles.message}>{message}</Text>
+          {requireReason && (
+            <TextField
+              label={reasonLabel}
+              value={reason}
+              onChangeText={setReason}
+              placeholder="e.g. no longer needed, too big, ran out of time…"
+              multiline
+              minHeight={72}
+              autoFocus
+              style={styles.reason}
+            />
+          )}
+          <View style={styles.actions}>
+            <Button
+              title="Cancel"
+              variant="secondary"
+              onPress={onCancel}
+              style={styles.flex}
+            />
+            <Button
+              title={confirmLabel}
+              variant="danger"
+              onPress={handleConfirm}
+              disabled={!canConfirm}
+              style={styles.flex}
+            />
+          </View>
+        </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
@@ -86,78 +98,46 @@ export default function ConfirmModal({
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.5)",
+    backgroundColor: colors.overlay,
     justifyContent: "center",
     alignItems: "center",
-    padding: 24,
+    padding: spacing.xxl,
   },
-  modal: {
-    backgroundColor: "#fff",
-    borderRadius: 12,
-    padding: 24,
-    width: 320,
-    maxWidth: "90%",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
-    elevation: 8,
+  dialog: {
+    width: "100%",
+    maxWidth: 360,
+    backgroundColor: colors.surface,
+    borderRadius: radii.xl + 4,
+    padding: spacing.xxl,
+    ...shadows.raised,
+  },
+  iconWrap: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: colors.dangerSoft,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: spacing.md,
+  },
+  title: {
+    ...type.title,
+    fontSize: 20,
+    marginBottom: spacing.xs + 2,
   },
   message: {
-    fontSize: 16,
-    color: "#1f2328",
-    marginBottom: 20,
-    lineHeight: 22,
+    ...type.body,
+    color: colors.textSecondary,
+    marginBottom: spacing.xl,
   },
-  reasonWrap: {
-    marginBottom: 20,
-  },
-  reasonLabel: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: "#555",
-    marginBottom: 8,
-  },
-  reasonInput: {
-    borderWidth: 1,
-    borderColor: "#ddd",
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 14,
-    color: "#1f2328",
-    minHeight: 64,
-    textAlignVertical: "top",
-    backgroundColor: "#fafafa",
+  reason: {
+    marginTop: -spacing.xs,
   },
   actions: {
     flexDirection: "row",
-    justifyContent: "flex-end",
-    gap: 10,
+    gap: spacing.md,
   },
-  cancelBtn: {
-    paddingVertical: 10,
-    paddingHorizontal: 18,
-    borderRadius: 8,
-    backgroundColor: "#f0f0f0",
-  },
-  cancelText: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#555",
-  },
-  deleteBtn: {
-    paddingVertical: 10,
-    paddingHorizontal: 18,
-    borderRadius: 8,
-    backgroundColor: "#e74c3c",
-  },
-  deleteBtnDisabled: {
-    opacity: 0.45,
-  },
-  deleteText: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#fff",
+  flex: {
+    flex: 1,
   },
 });

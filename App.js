@@ -1,112 +1,58 @@
 import React from "react";
-import { NavigationContainer } from "@react-navigation/native";
+import { NavigationContainer, DefaultTheme } from "@react-navigation/native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { StatusBar } from "expo-status-bar";
-import { Ionicons } from "@expo/vector-icons";
+import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import DreamScreen from "./screens/DreamScreen";
 import AffirmationsScreen from "./screens/AffirmationsScreen";
 import TodoScreen from "./screens/TodoScreen";
 import CallsScreen from "./screens/CallsScreen";
 import CounterScreen from "./screens/CounterScreen";
+import TabBar from "./components/TabBar";
+import { colors } from "./theme";
 
 const Tab = createBottomTabNavigator();
 
+const navTheme = {
+  ...DefaultTheme,
+  colors: {
+    ...DefaultTheme.colors,
+    primary: colors.primary,
+    background: colors.bg,
+    card: colors.surface,
+    text: colors.text,
+    border: colors.border,
+  },
+};
+
 export default function App() {
   return (
-    <NavigationContainer>
-      <Tab.Navigator
-        screenOptions={{
-          headerShown: false,
-          tabBarStyle: {
-            position: "absolute",
-            bottom: 30,
-            left: 20,
-            right: 20,
-            elevation: 5,
-            backgroundColor: "#ffffff",
-            borderRadius: 15,
-            height: 70,
-            shadowColor: "#000",
-            shadowOffset: {
-              width: 0,
-              height: 5,
+    <SafeAreaProvider>
+      <NavigationContainer theme={navTheme}>
+        <Tab.Navigator
+          initialRouteName="Dream"
+          tabBar={(props) => <TabBar {...props} />}
+          screenOptions={{ headerShown: false }}
+          screenListeners={({ navigation, route }) => ({
+            // Re-tapping the already-active tab returns to Todo — mirrors the
+            // web FE, where clicking an active view button toggles back to todo.
+            tabPress: (e) => {
+              if (route.name !== "Todo" && navigation.isFocused()) {
+                e.preventDefault();
+                navigation.navigate("Todo");
+              }
             },
-            shadowOpacity: 0.25,
-            shadowRadius: 3.5,
-            paddingBottom: 10,
-            paddingTop: 10,
-          },
-          tabBarActiveTintColor: "#1e88e5",
-          tabBarInactiveTintColor: "#888",
-          tabBarLabelStyle: {
-            fontSize: 12,
-            fontWeight: "600",
-          },
-        }}
-        screenListeners={({ navigation, route }) => ({
-          // Re-tapping the already-active tab returns to Todo — mirrors the
-          // web FE, where clicking an active view button toggles back to todo.
-          tabPress: (e) => {
-            if (route.name !== "Todo" && navigation.isFocused()) {
-              e.preventDefault();
-              navigation.navigate("Todo");
-            }
-          },
-        })}
-      >
-        <Tab.Screen
-          name="Dream"
-          component={DreamScreen}
-          options={{
-            headerShown: false,
-            tabBarIcon: ({ color, size }) => (
-              <Ionicons name="sparkles" size={size} color={color} />
-            ),
-          }}
-        />
-        <Tab.Screen
-          name="Affirmations"
-          component={AffirmationsScreen}
-          options={{
-            headerShown: false,
-            tabBarIcon: ({ color, size }) => (
-              <Ionicons name="heart" size={size} color={color} />
-            ),
-          }}
-        />
-        <Tab.Screen
-          name="Todo"
-          component={TodoScreen}
-          options={{
-            headerShown: false,
-            tabBarIcon: ({ color, size }) => (
-              <Ionicons name="checkbox" size={size} color={color} />
-            ),
-          }}
-        />
-        <Tab.Screen
-          name="Calls"
-          component={CallsScreen}
-          options={{
-            headerShown: false,
-            tabBarIcon: ({ color, size }) => (
-              <Ionicons name="call" size={size} color={color} />
-            ),
-          }}
-        />
-        <Tab.Screen
-          name="Counter"
-          component={CounterScreen}
-          options={{
-            headerShown: false,
-            tabBarIcon: ({ color, size }) => (
-              <Ionicons name="stats-chart" size={size} color={color} />
-            ),
-          }}
-        />
-      </Tab.Navigator>
-      <StatusBar style="auto" />
-    </NavigationContainer>
+          })}
+        >
+          <Tab.Screen name="Dream" component={DreamScreen} />
+          <Tab.Screen name="Affirmations" component={AffirmationsScreen} />
+          <Tab.Screen name="Todo" component={TodoScreen} />
+          <Tab.Screen name="Calls" component={CallsScreen} />
+          <Tab.Screen name="Counter" component={CounterScreen} />
+        </Tab.Navigator>
+        <StatusBar style="dark" />
+      </NavigationContainer>
+    </SafeAreaProvider>
   );
 }

@@ -1,14 +1,10 @@
 import React, { useState } from "react";
-import {
-  Modal,
-  StyleSheet,
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  Platform,
-} from "react-native";
+import { StyleSheet, View, Text, Pressable, Platform } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 import DateTimePicker from "@react-native-community/datetimepicker";
+import { Sheet, SheetActions, Button, TextField, FieldLabel } from "./ui";
+import { prettyDateKey } from "./EcdPicker";
+import { colors, radii, spacing, type } from "../theme";
 
 /** "YYYY-MM-DD" for a JS Date, built by component (never via toISOString, which shifts). */
 function dateKey(date) {
@@ -36,14 +32,15 @@ function lengthOf(startDate, endDate) {
 }
 
 /**
- * Book or correct a vacation.
+ * Book or correct a vacation — a bottom sheet. VacationSection mounts it only
+ * while it is open, so every open starts from fresh state.
  *
  * Two dates rather than a toggle, because **both are mandatory**: that is what
  * lets a trip be booked months ahead, which is the case that actually needs
  * planning. Coming home early, or forgetting to book it on the first morning,
  * are both edits to a stored range rather than a different state to carry.
  */
-export default function VacationModal({ vacation, onConfirm, onCancel }) {
+export default function VacationModal({ vacation, onConfirm, onCancel, visible = true }) {
   const today = dateKey(new Date());
   const [startDate, setStartDate] = useState(vacation?.startDate ?? today);
   const [endDate, setEndDate] = useState(vacation?.endDate ?? today);
@@ -51,6 +48,7 @@ export default function VacationModal({ vacation, onConfirm, onCancel }) {
   const [picking, setPicking] = useState(null); // "start" | "end" | null
 
   const invalid = endDate < startDate;
+  const days = lengthOf(startDate, endDate);
 
   function handlePicked(which, event, selected) {
     setPicking(null);
@@ -66,156 +64,147 @@ export default function VacationModal({ vacation, onConfirm, onCancel }) {
   }
 
   return (
-    <Modal transparent animationType="fade" onRequestClose={onCancel}>
-      <View style={styles.overlay}>
-        <View style={styles.modal}>
-          <Text style={styles.title}>
-            {vacation ? "Edit Vacation" : "Book Vacation"}
-          </Text>
-          <Text style={styles.hint}>
-            Both days count — the day you leave and the day you get back are
-            both vacation days.
-          </Text>
-
-          <TextInput
-            style={styles.input}
-            placeholder="Note… (optional, e.g. Kerala trip)"
-            placeholderTextColor="#8b949e"
-            value={note}
-            onChangeText={setNote}
+    <Sheet
+      visible={visible}
+      onClose={onCancel}
+      title={vacation ? "Edit vacation" : "Book vacation"}
+      testID="vacation-sheet"
+      footer={
+        <SheetActions>
+          <Button
+            title="Cancel"
+            variant="secondary"
+            size="lg"
+            onPress={onCancel}
+            style={styles.cancel}
           />
+          <Button
+            title={vacation ? "Save" : "Book"}
+            size="lg"
+            disabled={invalid}
+            onPress={() => onConfirm({ startDate, endDate, note: note.trim() })}
+            style={styles.primary}
+          />
+        </SheetActions>
+      }
+    >
+      {/* In the body rather than the sheet subtitle, which clamps to two lines. */}
+      <Text style={styles.hint}>
+        Both days count — the day you leave and the day you get back are both
+        vacation days.
+      </Text>
 
-          <Text style={styles.label}>First day</Text>
-          <TouchableOpacity
-            style={styles.dateBtn}
-            onPress={() => setPicking("start")}
-          >
-            <Text style={styles.dateBtnText}>{startDate}</Text>
-            <Text style={styles.calendarIcon}>📅</Text>
-          </TouchableOpacity>
+      <TextField
+        label="Note"
+        placeholder="Optional, e.g. Kerala trip"
+        value={note}
+        onChangeText={setNote}
+        returnKeyType="done"
+      />
 
-          <Text style={styles.label}>Last day</Text>
-          <TouchableOpacity
-            style={styles.dateBtn}
-            onPress={() => setPicking("end")}
-          >
-            <Text style={styles.dateBtnText}>{endDate}</Text>
-            <Text style={styles.calendarIcon}>📅</Text>
-          </TouchableOpacity>
+      <FieldLabel>First day</FieldLabel>
+      <DateButton
+        label={prettyDateKey(startDate)}
+        accessibilityLabel={`First day, ${prettyDateKey(startDate)}`}
+        onPress={() => setPicking("start")}
+      />
 
-          {picking && (
-            <DateTimePicker
-              value={parseKey(picking === "start" ? startDate : endDate)}
-              mode="date"
-              display={Platform.OS === "ios" ? "spinner" : "default"}
-              onChange={(event, selected) =>
-                handlePicked(picking, event, selected)
-              }
-            />
-          )}
+      <FieldLabel style={styles.secondLabel}>Last day</FieldLabel>
+      <DateButton
+        label={prettyDateKey(endDate)}
+        accessibilityLabel={`Last day, ${prettyDateKey(endDate)}`}
+        onPress={() => setPicking("end")}
+      />
 
-          <Text style={[styles.summary, invalid && styles.summaryError]}>
-            {invalid
-              ? "The last day can't be before the first day."
-              : `${lengthOf(startDate, endDate)} day${
-                  lengthOf(startDate, endDate) === 1 ? "" : "s"
-                } off`}
-          </Text>
+      {picking && (
+        <DateTimePicker
+          value={parseKey(picking === "start" ? startDate : endDate)}
+          mode="date"
+          display={Platform.OS === "ios" ? "spinner" : "default"}
+          onChange={(event, selected) => handlePicked(picking, event, selected)}
+        />
+      )}
 
-          <View style={styles.actions}>
-            <TouchableOpacity style={styles.btn} onPress={onCancel}>
-              <Text style={styles.btnText}>Cancel</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.btn, styles.btnPrimary, invalid && styles.btnDisabled]}
-              disabled={invalid}
-              onPress={() =>
-                onConfirm({ startDate, endDate, note: note.trim() })
-              }
-            >
-              <Text style={[styles.btnText, styles.btnPrimaryText]}>
-                {vacation ? "Save" : "Book"}
-              </Text>
-            </TouchableOpacity>
-          </View>
-        </View>
+      <View style={[styles.summary, invalid && styles.summaryError]}>
+        <Ionicons
+          name={invalid ? "alert-circle" : "sunny-outline"}
+          size={18}
+          color={invalid ? colors.dangerText : colors.infoText}
+        />
+        <Text style={[styles.summaryText, invalid && styles.summaryTextError]}>
+          {invalid
+            ? "The last day can't be before the first day."
+            : `${days} day${days === 1 ? "" : "s"} off`}
+        </Text>
       </View>
-    </Modal>
+    </Sheet>
+  );
+}
+
+/** The EcdPicker date-button look: a soft field with a calendar glyph. */
+function DateButton({ label, accessibilityLabel, onPress }) {
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
+      accessibilityHint="Opens the date picker"
+      style={({ pressed }) => [styles.dateBtn, pressed && styles.dateBtnPressed]}
+    >
+      <Text style={styles.dateText}>{label}</Text>
+      <Ionicons name="calendar-outline" size={20} color={colors.primary} />
+    </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
-  overlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.4)",
-    justifyContent: "center",
-    padding: 20,
-  },
-  modal: {
-    backgroundColor: "#fff",
-    borderRadius: 12,
-    padding: 20,
-  },
-  title: {
-    fontSize: 17,
-    fontWeight: "700",
-    color: "#1f2328",
-    marginBottom: 4,
-  },
+  cancel: { flex: 1 },
+  primary: { flex: 2 },
   hint: {
-    fontSize: 12,
-    color: "#656d76",
-    marginBottom: 14,
-    lineHeight: 17,
+    ...type.subhead,
+    marginBottom: spacing.lg,
   },
-  input: {
-    borderWidth: 1,
-    borderColor: "#d0d7de",
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 15,
-    color: "#1f2328",
-    marginBottom: 14,
-  },
-  label: {
-    fontSize: 11,
-    fontWeight: "700",
-    letterSpacing: 0.5,
-    textTransform: "uppercase",
-    color: "#656d76",
-    marginBottom: 6,
+  secondLabel: {
+    marginTop: spacing.sm,
   },
   dateBtn: {
     flexDirection: "row",
-    alignItems: "center",
     justifyContent: "space-between",
-    borderWidth: 1,
-    borderColor: "#d0d7de",
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    marginBottom: 14,
+    alignItems: "center",
+    minHeight: 48,
+    borderRadius: radii.md,
+    paddingHorizontal: 14,
+    backgroundColor: colors.surfaceMuted,
+    marginBottom: spacing.sm,
   },
-  dateBtnText: { fontSize: 15, color: "#1f2328" },
-  calendarIcon: { fontSize: 16 },
+  dateBtnPressed: {
+    backgroundColor: colors.surfaceSunken,
+  },
+  dateText: {
+    ...type.body,
+    flex: 1,
+  },
   summary: {
-    fontSize: 13,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    marginTop: spacing.md,
+    marginBottom: spacing.sm,
+    paddingVertical: spacing.sm + 2,
+    paddingHorizontal: spacing.md,
+    borderRadius: radii.md,
+    backgroundColor: colors.infoSoft,
+  },
+  summaryError: {
+    backgroundColor: colors.dangerSoft,
+  },
+  summaryText: {
+    ...type.callout,
     fontWeight: "600",
-    color: "#1f2328",
-    marginBottom: 16,
+    color: colors.infoText,
+    flex: 1,
   },
-  summaryError: { color: "#cf222e" },
-  actions: { flexDirection: "row", justifyContent: "flex-end", gap: 8 },
-  btn: {
-    paddingHorizontal: 16,
-    paddingVertical: 9,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: "#d0d7de",
+  summaryTextError: {
+    color: colors.dangerText,
   },
-  btnText: { fontSize: 14, color: "#1f2328", fontWeight: "600" },
-  btnPrimary: { backgroundColor: "#1e88e5", borderColor: "#1e88e5" },
-  btnPrimaryText: { color: "#fff" },
-  btnDisabled: { opacity: 0.5 },
 });

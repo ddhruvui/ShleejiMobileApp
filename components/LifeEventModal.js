@@ -1,14 +1,14 @@
 import React, { useState, useRef, useEffect } from "react";
+import { View, Text, Pressable, StyleSheet } from "react-native";
 import {
-  Modal,
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  StyleSheet,
-  KeyboardAvoidingView,
-  Platform,
-} from "react-native";
+  Sheet,
+  SheetActions,
+  Button,
+  Chip,
+  TextField,
+  FieldLabel,
+} from "./ui";
+import { colors, radii, spacing, type, HIT_TARGET } from "../theme";
 
 // Max day per month (1-indexed); Feb 29 is allowed — the backend cron fires
 // it on Feb 28 in non-leap years.
@@ -29,8 +29,23 @@ const SHORT_MONTHS = [
   "Dec",
 ];
 
+const LONG_MONTHS = [
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
+];
+
 /**
- * Dual-purpose add/edit modal for life events (annually recurring dates).
+ * Dual-purpose add/edit sheet for life events (annually recurring dates).
  *
  * - `lifeEvent` null  → add mode
  * - `lifeEvent` set   → edit mode (pre-filled)
@@ -59,7 +74,7 @@ export default function LifeEventModal({
       setName(lifeEvent ? lifeEvent.name : "");
       setDay(initialDay);
       setMonth(initialMonth);
-      setTimeout(() => nameRef.current?.focus(), 100);
+      setTimeout(() => nameRef.current?.focus(), 250);
     }
   }, [visible]);
 
@@ -78,239 +93,125 @@ export default function LifeEventModal({
   }
 
   return (
-    <Modal
+    <Sheet
       visible={visible}
-      transparent
-      animationType="fade"
-      onRequestClose={onCancel}
+      onClose={onCancel}
+      title={isEdit ? "Edit life event" : "Add life event"}
+      subtitle="Repeats every year — it lands in your todo on the day."
+      footer={
+        <SheetActions>
+          <Button
+            title="Cancel"
+            variant="secondary"
+            size="lg"
+            onPress={onCancel}
+            style={{ flex: 1 }}
+          />
+          <Button
+            title={isEdit ? "Save" : "Add life event"}
+            size="lg"
+            onPress={handleConfirm}
+            disabled={!name.trim()}
+            style={{ flex: 2 }}
+          />
+        </SheetActions>
+      }
     >
-      <TouchableOpacity
-        style={styles.overlay}
-        activeOpacity={1}
-        onPress={onCancel}
-      >
-        <KeyboardAvoidingView
-          behavior={Platform.OS === "ios" ? "padding" : "height"}
-          style={styles.keyboardView}
-        >
-          <TouchableOpacity
-            activeOpacity={1}
-            onPress={(e) => e.stopPropagation()}
-          >
-            <View style={styles.modal}>
-              <Text style={styles.title}>
-                {isEdit ? "Edit Life Event" : "Add Life Event"}
-              </Text>
+      <TextField
+        ref={nameRef}
+        label="Life event"
+        placeholder="e.g. Wife's birthday"
+        value={name}
+        onChangeText={setName}
+        returnKeyType="done"
+      />
 
-              <TextInput
-                ref={nameRef}
-                style={styles.nameInput}
-                placeholder="Life event… (e.g. Wife's birthday)"
-                placeholderTextColor="#999"
-                value={name}
-                onChangeText={setName}
-              />
+      <FieldLabel>Month</FieldLabel>
+      <View style={styles.monthRow}>
+        {SHORT_MONTHS.map((label, idx) => (
+          <Chip
+            key={label}
+            size="sm"
+            label={label}
+            accessibilityLabel={LONG_MONTHS[idx]}
+            selected={month === idx + 1}
+            onPress={() => handleMonthChange(idx + 1)}
+            style={styles.monthChip}
+          />
+        ))}
+      </View>
 
-              <Text style={styles.fieldLabel}>Month</Text>
-              <View style={styles.monthRow}>
-                {SHORT_MONTHS.map((label, idx) => (
-                  <TouchableOpacity
-                    key={label}
-                    style={[
-                      styles.monthBtn,
-                      month === idx + 1 && styles.pickBtnActive,
-                    ]}
-                    onPress={() => handleMonthChange(idx + 1)}
-                  >
-                    <Text
-                      style={[
-                        styles.pickText,
-                        month === idx + 1 && styles.pickTextActive,
-                      ]}
-                    >
-                      {label}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
+      <FieldLabel>Day</FieldLabel>
+      <View style={styles.dayGrid}>
+        {Array.from({ length: maxDay }, (_, i) => i + 1).map((d) => {
+          const on = day === d;
+          return (
+            <Pressable
+              key={d}
+              onPress={() => setDay(d)}
+              accessibilityRole="button"
+              accessibilityLabel={`${d} ${LONG_MONTHS[month - 1]}`}
+              accessibilityState={{ selected: on }}
+              style={({ pressed }) => [
+                styles.dayBtn,
+                pressed && !on && styles.dayBtnPressed,
+                on && styles.dayBtnOn,
+              ]}
+            >
+              <Text style={[styles.dayText, on && styles.dayTextOn]}>{d}</Text>
+            </Pressable>
+          );
+        })}
+      </View>
 
-              <Text style={styles.fieldLabel}>Day</Text>
-              <View style={styles.dayGrid}>
-                {Array.from({ length: maxDay }, (_, i) => i + 1).map((d) => (
-                  <TouchableOpacity
-                    key={d}
-                    style={[
-                      styles.dayBtn,
-                      day === d && styles.pickBtnActive,
-                    ]}
-                    onPress={() => setDay(d)}
-                  >
-                    <Text
-                      style={[
-                        styles.pickText,
-                        day === d && styles.pickTextActive,
-                      ]}
-                    >
-                      {d}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-
-              <Text style={styles.hint}>
-                Repeats every year — it lands in your todo on the day.
-              </Text>
-
-              <View style={styles.actions}>
-                <TouchableOpacity style={styles.cancelBtn} onPress={onCancel}>
-                  <Text style={styles.cancelText}>Cancel</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[
-                    styles.confirmBtn,
-                    !name.trim() && styles.disabledBtn,
-                  ]}
-                  onPress={handleConfirm}
-                  disabled={!name.trim()}
-                >
-                  <Text style={styles.confirmText}>
-                    {isEdit ? "Save" : "Add"}
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          </TouchableOpacity>
-        </KeyboardAvoidingView>
-      </TouchableOpacity>
-    </Modal>
+      <Text style={styles.summary}>
+        Every year on {day} {LONG_MONTHS[month - 1]}
+      </Text>
+    </Sheet>
   );
 }
 
 const styles = StyleSheet.create({
-  overlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.5)",
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 16,
-  },
-  keyboardView: {
-    width: "100%",
-    alignItems: "center",
-  },
-  modal: {
-    backgroundColor: "#fff",
-    borderRadius: 12,
-    padding: 24,
-    width: 360,
-    maxWidth: "95%",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
-    elevation: 8,
-  },
-  title: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: "#1f2328",
-    marginBottom: 16,
-  },
-  nameInput: {
-    borderWidth: 1,
-    borderColor: "#d0d7de",
-    borderRadius: 8,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    fontSize: 17,
-    color: "#1f2328",
-    backgroundColor: "#fafafa",
-    marginBottom: 16,
-  },
-  fieldLabel: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: "#656d76",
-    marginBottom: 8,
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
-  },
   monthRow: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: 5,
-    marginBottom: 12,
+    gap: spacing.sm - 2,
+    marginBottom: spacing.lg,
   },
-  monthBtn: {
-    paddingVertical: 8,
-    paddingHorizontal: 10,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: "#d0d7de",
-    backgroundColor: "#f6f8fa",
+  monthChip: {
+    minHeight: HIT_TARGET,
+    minWidth: 56,
+    justifyContent: "center",
   },
   dayGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: 5,
-    marginBottom: 8,
+    gap: spacing.xs,
+    marginBottom: spacing.md,
   },
   dayBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: "#d0d7de",
-    backgroundColor: "#f6f8fa",
-    justifyContent: "center",
+    width: HIT_TARGET,
+    height: HIT_TARGET,
+    borderRadius: radii.sm + 2,
+    backgroundColor: colors.surfaceMuted,
     alignItems: "center",
+    justifyContent: "center",
   },
-  pickBtnActive: {
-    backgroundColor: "#6200ee",
-    borderColor: "#6200ee",
+  dayBtnPressed: {
+    backgroundColor: colors.surfaceSunken,
   },
-  pickText: {
-    fontSize: 13,
-    fontWeight: "500",
-    color: "#555",
+  dayBtnOn: {
+    backgroundColor: colors.primary,
   },
-  pickTextActive: {
-    color: "#fff",
-  },
-  hint: {
-    fontSize: 12,
-    color: "#656d76",
-    fontStyle: "italic",
-    marginBottom: 16,
-  },
-  actions: {
-    flexDirection: "row",
-    justifyContent: "flex-end",
-    gap: 10,
-  },
-  cancelBtn: {
-    paddingVertical: 10,
-    paddingHorizontal: 18,
-    borderRadius: 8,
-    backgroundColor: "#f0f0f0",
-  },
-  cancelText: {
-    fontSize: 14,
+  dayText: {
+    ...type.subhead,
     fontWeight: "600",
-    color: "#555",
   },
-  confirmBtn: {
-    paddingVertical: 10,
-    paddingHorizontal: 18,
-    borderRadius: 8,
-    backgroundColor: "#6200ee",
+  dayTextOn: {
+    color: colors.onPrimary,
   },
-  disabledBtn: {
-    opacity: 0.5,
-  },
-  confirmText: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#fff",
+  summary: {
+    ...type.footnote,
+    marginBottom: spacing.sm,
   },
 });

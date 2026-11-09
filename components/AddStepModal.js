@@ -1,12 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
-import {
-  Modal,
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  StyleSheet,
-} from "react-native";
+import { Sheet, SheetActions, Button, TextField } from "./ui";
 
 /**
  * Adds one step to a goal's backlog — the goals-side equivalent of adding a
@@ -27,7 +20,7 @@ export default function AddStepModal({
   useEffect(() => {
     if (visible) {
       setName("");
-      setTimeout(() => inputRef.current?.focus(), 100);
+      setTimeout(() => inputRef.current?.focus(), 250);
     }
   }, [visible]);
 
@@ -38,135 +31,41 @@ export default function AddStepModal({
   }
 
   return (
-    <Modal
+    <Sheet
       visible={visible}
-      transparent
-      animationType="fade"
-      onRequestClose={onCancel}
+      onClose={onCancel}
+      title="Add step"
+      subtitle={goalName || undefined}
+      footer={
+        <SheetActions>
+          <Button
+            title="Cancel"
+            variant="secondary"
+            size="lg"
+            onPress={onCancel}
+            style={{ flex: 1 }}
+          />
+          <Button
+            title="Add step"
+            size="lg"
+            onPress={handleSubmit}
+            disabled={!name.trim()}
+            loading={!!busy}
+            style={{ flex: 2 }}
+          />
+        </SheetActions>
+      }
     >
-      <TouchableOpacity
-        style={styles.overlay}
-        activeOpacity={1}
-        onPress={onCancel}
-      >
-        <TouchableOpacity activeOpacity={1} onPress={(e) => e.stopPropagation()}>
-          <View style={styles.modal}>
-            <Text style={styles.title}>Add step</Text>
-            {goalName ? (
-              <Text style={styles.subtitle} numberOfLines={1}>
-                {goalName}
-              </Text>
-            ) : null}
-            <TextInput
-              ref={inputRef}
-              style={styles.input}
-              placeholder="Step name… (e.g. Wake up at 6)"
-              placeholderTextColor="#999"
-              value={name}
-              onChangeText={setName}
-              onSubmitEditing={handleSubmit}
-              returnKeyType="done"
-            />
-            <Text style={styles.hint}>
-              Added to the backlog. Start it later to make it a daily habit.
-            </Text>
-            <View style={styles.actions}>
-              <TouchableOpacity style={styles.cancelBtn} onPress={onCancel}>
-                <Text style={styles.cancelText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[
-                  styles.confirmBtn,
-                  (busy || !name.trim()) && styles.disabledBtn,
-                ]}
-                onPress={handleSubmit}
-                disabled={busy || !name.trim()}
-              >
-                <Text style={styles.confirmText}>Add step</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </TouchableOpacity>
-      </TouchableOpacity>
-    </Modal>
+      <TextField
+        ref={inputRef}
+        label="Step name"
+        placeholder="e.g. Wake up at 6"
+        value={name}
+        onChangeText={setName}
+        onSubmitEditing={handleSubmit}
+        returnKeyType="done"
+        helper="Added to the backlog. Start it later to make it a daily habit."
+      />
+    </Sheet>
   );
 }
-
-const styles = StyleSheet.create({
-  overlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.5)",
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 24,
-  },
-  modal: {
-    backgroundColor: "#fff",
-    borderRadius: 12,
-    padding: 24,
-    width: 340,
-    maxWidth: "90%",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
-    elevation: 8,
-  },
-  title: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: "#1f2328",
-  },
-  subtitle: {
-    fontSize: 13,
-    color: "#656d76",
-    marginTop: 2,
-    marginBottom: 16,
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: "#d0d7de",
-    borderRadius: 8,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    fontSize: 16,
-    color: "#1f2328",
-    marginBottom: 10,
-    backgroundColor: "#fafafa",
-  },
-  hint: {
-    fontSize: 12,
-    color: "#656d76",
-    marginBottom: 20,
-  },
-  actions: {
-    flexDirection: "row",
-    justifyContent: "flex-end",
-    gap: 10,
-  },
-  cancelBtn: {
-    paddingVertical: 10,
-    paddingHorizontal: 18,
-    borderRadius: 8,
-    backgroundColor: "#f0f0f0",
-  },
-  cancelText: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#555",
-  },
-  confirmBtn: {
-    paddingVertical: 10,
-    paddingHorizontal: 18,
-    borderRadius: 8,
-    backgroundColor: "#6200ee",
-  },
-  disabledBtn: {
-    opacity: 0.5,
-  },
-  confirmText: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#fff",
-  },
-});

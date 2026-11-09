@@ -3,32 +3,36 @@ import {
   StyleSheet,
   View,
   Text,
-  TouchableOpacity,
+  Pressable,
   Image,
   Alert,
-  Dimensions,
   ScrollView,
   Platform,
   Modal,
+  useWindowDimensions,
 } from "react-native";
 import * as ImagePicker from "expo-image-picker";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect } from "@react-navigation/native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { activateKeepAwakeAsync, deactivateKeepAwake } from "expo-keep-awake";
 import AddButton from "../components/AddButton";
+import { EmptyState, IconButton, ScreenHeader } from "../components/ui";
+import { colors, radii, spacing, type, useBottomClearance } from "../theme";
 
-const { width, height } = Dimensions.get("window");
 const KEEP_AWAKE_TAG = "dream-board";
 const COLUMN_COUNT = 2;
-const GAP = 8;
-const PADDING = 8;
-const IMAGE_WIDTH =
-  (width - PADDING * 2 - GAP * (COLUMN_COUNT - 1)) / COLUMN_COUNT;
+const GAP = 10;
+const PADDING = 12;
 
 export default function DreamScreen() {
   const [photos, setPhotos] = useState([]);
   const [expandedPhoto, setExpandedPhoto] = useState(null);
+  const { width } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+  const bottomClearance = useBottomClearance();
+  const imageWidth = (width - PADDING * 2 - GAP * (COLUMN_COUNT - 1)) / COLUMN_COUNT;
 
   useEffect(() => {
     loadPhotos();
@@ -152,10 +156,13 @@ export default function DreamScreen() {
     }
   };
 
-  const calculateImageHeight = (photo) => {
-    const aspectRatio = photo.height / photo.width;
-    return IMAGE_WIDTH * aspectRatio;
-  };
+  const calculateImageHeight = useCallback(
+    (photo) => {
+      const aspectRatio = photo.height && photo.width ? photo.height / photo.width : 1;
+      return imageWidth * aspectRatio;
+    },
+    [imageWidth],
+  );
 
   // Distribute photos into two columns for masonry layout (greedy shortest-column-first)
   const { leftColumn, rightColumn } = useMemo(() => {
@@ -176,201 +183,170 @@ export default function DreamScreen() {
     });
 
     return { leftColumn: left, rightColumn: right };
-  }, [photos]);
+  }, [photos, calculateImageHeight]);
 
   const renderPhoto = (item) => (
-    <TouchableOpacity
+    <Pressable
       key={item.id.toString()}
-      activeOpacity={0.9}
-      style={styles.photoContainer}
+      style={({ pressed }) => [styles.photoContainer, pressed && styles.photoPressed]}
       onPress={() => setExpandedPhoto(item)}
+      accessibilityRole="imagebutton"
+      accessibilityLabel={`Dream photo ${photos.indexOf(item) + 1} of ${photos.length}`}
     >
       <Image
         source={{ uri: item.uri }}
-        style={[
-          styles.photo,
-          {
-            width: "100%",
-            height: calculateImageHeight(item),
-          },
-        ]}
+        style={[styles.photo, { width: "100%", height: calculateImageHeight(item) }]}
       />
-    </TouchableOpacity>
+    </Pressable>
   );
+
+  const expandedIndex = expandedPhoto
+    ? photos.findIndex((p) => p.id === expandedPhoto.id)
+    : -1;
+  const isFirst = expandedIndex === 0;
+  const isLast = expandedIndex === photos.length - 1;
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.title}>Dream Board</Text>
-        <AddButton label="Add photo" onPress={pickImage} />
-      </View>
+      <ScreenHeader
+        title="Dream Board"
+        subtitle={
+          photos.length > 0
+            ? `${photos.length} ${photos.length === 1 ? "photo" : "photos"} · screen stays on`
+            : undefined
+        }
+        right={<AddButton label="Add photo" onPress={pickImage} />}
+      />
 
       {photos.length === 0 ? (
-        <View style={styles.emptyWrap}>
-          <View style={styles.emptyContainer}>
-            <Ionicons name="images-outline" size={80} color="#ccc" />
-            <Text style={styles.emptyText}>No dreams yet</Text>
-            <Text style={styles.emptySubtext}>
-              Tap the + button to add inspiration
-            </Text>
-          </View>
-        </View>
+        <EmptyState
+          icon="images-outline"
+          title="No dreams yet"
+          message="Add photos that inspire you — the screen stays on while you look."
+          actionLabel="Add photos"
+          onAction={pickImage}
+          style={{ paddingBottom: bottomClearance }}
+        />
       ) : (
         <ScrollView
-          contentContainerStyle={styles.photosGrid}
+          contentContainerStyle={[styles.photosGrid, { paddingBottom: bottomClearance }]}
           showsVerticalScrollIndicator={false}
         >
           <View style={styles.masonryContainer}>
-            <View style={styles.masonryColumn}>
-              {leftColumn.map(renderPhoto)}
-            </View>
+            <View style={styles.masonryColumn}>{leftColumn.map(renderPhoto)}</View>
             <View style={{ width: GAP }} />
-            <View style={styles.masonryColumn}>
-              {rightColumn.map(renderPhoto)}
-            </View>
+            <View style={styles.masonryColumn}>{rightColumn.map(renderPhoto)}</View>
           </View>
         </ScrollView>
       )}
 
-      {/* Expanded Photo Modal */}
+      {/* Expanded photo viewer */}
       <Modal
         visible={expandedPhoto !== null}
         transparent={true}
         animationType="fade"
+        statusBarTranslucent
         onRequestClose={() => setExpandedPhoto(null)}
       >
-        <View style={styles.modalContainer}>
-          <TouchableOpacity
-            style={styles.modalBackdrop}
-            activeOpacity={1}
+        <View style={styles.viewer}>
+          <Pressable
+            style={StyleSheet.absoluteFill}
             onPress={() => setExpandedPhoto(null)}
+            accessibilityRole="button"
+            accessibilityLabel="Close photo"
+          />
+
+          <View
+            pointerEvents="box-none"
+            style={[styles.viewerTop, { paddingTop: insets.top + spacing.sm }]}
           >
-            <View style={styles.expandedPhotoContainer}>
-              {expandedPhoto && (
-                <>
-                  <Image
-                    source={{ uri: expandedPhoto.uri }}
-                    style={styles.expandedPhoto}
-                    resizeMode="contain"
-                  />
-                  <View style={styles.photoControls}>
-                    <TouchableOpacity
-                      style={styles.controlButton}
-                      onPress={(e) => {
-                        e.stopPropagation();
-                        movePhotoUp(expandedPhoto.id);
-                      }}
-                      disabled={
-                        photos.findIndex((p) => p.id === expandedPhoto.id) === 0
-                      }
-                    >
-                      <Ionicons
-                        name="arrow-up-circle"
-                        size={48}
-                        color={
-                          photos.findIndex((p) => p.id === expandedPhoto.id) ===
-                          0
-                            ? "#666"
-                            : "#fff"
-                        }
-                      />
-                      <Text style={styles.controlButtonText}>Up</Text>
-                    </TouchableOpacity>
+            <Text style={styles.viewerCount}>
+              {expandedIndex >= 0 ? `${expandedIndex + 1} / ${photos.length}` : ""}
+            </Text>
+            <IconButton
+              icon="close"
+              label="Close photo"
+              variant="inverse"
+              onPress={() => setExpandedPhoto(null)}
+            />
+          </View>
 
-                    <TouchableOpacity
-                      style={styles.controlButton}
-                      onPress={(e) => {
-                        e.stopPropagation();
-                        removePhoto(expandedPhoto.id);
-                      }}
-                    >
-                      <Ionicons name="trash" size={48} color="#ff4444" />
-                      <Text style={styles.controlButtonText}>Remove</Text>
-                    </TouchableOpacity>
+          {expandedPhoto && (
+            <Image
+              source={{ uri: expandedPhoto.uri }}
+              style={styles.expandedPhoto}
+              resizeMode="contain"
+              pointerEvents="none"
+            />
+          )}
 
-                    <TouchableOpacity
-                      style={styles.controlButton}
-                      onPress={(e) => {
-                        e.stopPropagation();
-                        movePhotoDown(expandedPhoto.id);
-                      }}
-                      disabled={
-                        photos.findIndex((p) => p.id === expandedPhoto.id) ===
-                        photos.length - 1
-                      }
-                    >
-                      <Ionicons
-                        name="arrow-down-circle"
-                        size={48}
-                        color={
-                          photos.findIndex((p) => p.id === expandedPhoto.id) ===
-                          photos.length - 1
-                            ? "#666"
-                            : "#fff"
-                        }
-                      />
-                      <Text style={styles.controlButtonText}>Down</Text>
-                    </TouchableOpacity>
-                  </View>
-                </>
-              )}
+          {expandedPhoto && (
+            <View
+              pointerEvents="box-none"
+              style={[styles.photoControls, { paddingBottom: insets.bottom + spacing.lg }]}
+            >
+              <ViewerAction
+                icon="arrow-up"
+                label="Up"
+                disabled={isFirst}
+                onPress={() => movePhotoUp(expandedPhoto.id)}
+              />
+              <ViewerAction
+                icon="trash-outline"
+                label="Remove"
+                destructive
+                onPress={() => removePhoto(expandedPhoto.id)}
+              />
+              <ViewerAction
+                icon="arrow-down"
+                label="Down"
+                disabled={isLast}
+                onPress={() => movePhotoDown(expandedPhoto.id)}
+              />
             </View>
-          </TouchableOpacity>
+          )}
         </View>
       </Modal>
     </View>
   );
 }
 
+function ViewerAction({ icon, label, onPress, disabled, destructive }) {
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={disabled}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityState={{ disabled: !!disabled }}
+      style={({ pressed }) => [styles.controlButton, disabled && styles.controlDisabled]}
+    >
+      {({ pressed }) => (
+        <>
+          <View
+            style={[
+              styles.controlCircle,
+              destructive && styles.controlCircleDanger,
+              pressed && styles.controlCirclePressed,
+            ]}
+          >
+            <Ionicons name={icon} size={24} color={destructive ? colors.dangerOnDark : colors.white} />
+          </View>
+          <Text style={styles.controlButtonText}>{label}</Text>
+        </>
+      )}
+    </Pressable>
+  );
+}
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#f0f2f5",
-  },
-  header: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingHorizontal: 24,
-    paddingTop: 54,
-    paddingBottom: 28,
-    backgroundColor: "#1e88e5",
-    elevation: 6,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-  },
-  title: {
-    fontSize: 32,
-    fontWeight: "800",
-    color: "#fff",
-  },
-  emptyWrap: {
-    flex: 1,
-    padding: 8,
-  },
-  emptyContainer: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingBottom: 100,
-  },
-  emptyText: {
-    fontSize: 22,
-    fontWeight: "600",
-    color: "#999",
-    marginTop: 20,
-  },
-  emptySubtext: {
-    fontSize: 16,
-    color: "#bbb",
-    marginTop: 8,
+    backgroundColor: colors.bg,
   },
   photosGrid: {
     paddingHorizontal: PADDING,
-    paddingTop: PADDING,
-    paddingBottom: 120,
+    paddingTop: spacing.xs,
   },
   masonryContainer: {
     flexDirection: "row",
@@ -381,56 +357,68 @@ const styles = StyleSheet.create({
   },
   photoContainer: {
     marginBottom: GAP,
-    borderRadius: 12,
+    borderRadius: radii.lg + 2,
     overflow: "hidden",
-    backgroundColor: "#fff",
-    shadowColor: "#000",
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    backgroundColor: colors.surfaceSunken,
+  },
+  photoPressed: {
+    opacity: 0.88,
   },
   photo: {
     resizeMode: "cover",
   },
-  modalContainer: {
+  viewer: {
     flex: 1,
-    backgroundColor: "rgba(0, 0, 0, 0.95)",
+    backgroundColor: colors.scrim,
+    justifyContent: "space-between",
   },
-  modalBackdrop: {
-    flex: 1,
-    justifyContent: "center",
+  viewerTop: {
+    flexDirection: "row",
     alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: spacing.lg,
   },
-  expandedPhotoContainer: {
-    width: width,
-    height: height,
-    justifyContent: "center",
-    alignItems: "center",
+  viewerCount: {
+    ...type.callout,
+    color: "rgba(255,255,255,0.75)",
   },
   expandedPhoto: {
-    width: width,
-    height: height * 0.7,
+    flex: 1,
+    width: "100%",
+    marginVertical: spacing.lg,
   },
   photoControls: {
     flexDirection: "row",
-    justifyContent: "space-around",
+    justifyContent: "space-evenly",
     alignItems: "center",
-    width: width * 0.8,
-    marginTop: 40,
+    paddingTop: spacing.sm,
   },
   controlButton: {
     alignItems: "center",
     justifyContent: "center",
-    padding: 10,
+    padding: spacing.sm,
+    minWidth: 72,
+  },
+  controlDisabled: {
+    opacity: 0.3,
+  },
+  controlCircle: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: "rgba(255,255,255,0.14)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  controlCircleDanger: {
+    backgroundColor: "rgba(255,107,107,0.16)",
+  },
+  controlCirclePressed: {
+    backgroundColor: "rgba(255,255,255,0.28)",
   },
   controlButtonText: {
-    color: "#fff",
-    fontSize: 14,
-    marginTop: 8,
-    fontWeight: "600",
+    ...type.caption,
+    color: colors.white,
+    marginTop: spacing.sm,
   },
 });
