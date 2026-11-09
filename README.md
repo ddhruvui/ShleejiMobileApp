@@ -4,7 +4,7 @@ Expo / React Native mobile app for TaskAtHand, with four tabs:
 
 | Tab       | What it does                                                                 |
 | --------- | ---------------------------------------------------------------------------- |
-| **Dream** | The vision board first — inspiration images from the photo library (masonry grid; tap one to view it full screen, reorder or remove it) — followed by your **daily affirmations**, short lines to read every day (add, edit, delete; synced with the web app via the backend). The header "+" asks whether to add photos or an affirmation, and each section has its own "+". The screen stays awake while this tab is open, including with a photo expanded |
+| **Dream** | The vision board first — inspiration images from the photo library (masonry grid; tap one to view it full screen, swipe left/right to move between photos, reorder or remove it) — followed by your **daily affirmations**, short lines to read every day (add, edit, delete; synced with the web app via the backend). The header "+" asks whether to add photos or an affirmation, and each section has its own "+". The screen stays awake while this tab is open, including with a photo expanded |
 | **Todo**  | Full TaskAtHand client — headers, tasks, ECDs, filters, and Insights         |
 | **Calls** | People to ring — Biweekly and Monthly sections; check off who you've called (the backend cron unchecks biweekly people on the 15th and everyone on the last day of the month); add, edit, delete (synced with the web app via the backend) |
 | **Counter** | Mada counter — taps accumulate; every 108 clicks converts to 1 mada        |
@@ -289,7 +289,7 @@ Shleeji/
 │   ├── TaskCard.js  AddTaskModal.js  EditTaskModal.js
 │   ├── AddButton.js           # Shared icon-only "+" (sits beside the screen title)
 │   ├── HeaderModal.js  ConfirmModal.js  EcdPicker.js
-│   ├── DreamBoard.js          # Vision board grid + full-screen photo viewer (AsyncStorage)
+│   ├── DreamBoard.js          # Vision board grid + swipeable full-screen photo viewer (AsyncStorage)
 │   ├── AffirmationsList.js    # Daily affirmations list (backend-synced)
 │   ├── AffirmationModal.js    # Add/edit (+ delete) affirmation sheet
 │   ├── CallModal.js           # Add/edit call modal (name + biweekly/monthly)

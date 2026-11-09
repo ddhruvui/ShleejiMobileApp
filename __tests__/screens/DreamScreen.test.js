@@ -1,5 +1,5 @@
 import React from "react";
-import { Alert } from "react-native";
+import { Alert, Dimensions } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { render, screen, fireEvent, waitFor, act } from "@testing-library/react-native";
 import { activateKeepAwakeAsync, deactivateKeepAwake } from "expo-keep-awake";
@@ -109,6 +109,47 @@ describe("Dream tab", () => {
           JSON.parse(await AsyncStorage.getItem("dreamPhotos")).map((p) => p.id),
         ).toEqual([2, 1]),
       );
+    });
+
+    it("swipes between photos in the full-screen viewer", async () => {
+      const { width, height } = Dimensions.get("window");
+      const swipeTo = (page) =>
+        fireEvent.scroll(screen.getByLabelText("Photo 1 of 2"), {
+          nativeEvent: {
+            contentOffset: { x: page * width, y: 0 },
+            contentSize: { width: width * PHOTOS.length, height },
+            layoutMeasurement: { width, height },
+          },
+        });
+
+      await renderDream({ photos: PHOTOS });
+      fireEvent.press(await screen.findByLabelText("Dream photo 1 of 2"));
+      expect(screen.getByLabelText("Photo 1 of 2")).toBeTruthy();
+
+      swipeTo(1);
+      expect(screen.getByText("2 / 2")).toBeTruthy();
+      expect(screen.getByRole("button", { name: "Down" })).toBeDisabled();
+      expect(screen.getByRole("button", { name: "Up" })).toBeEnabled();
+
+      // Reordering acts on the photo swiped to, not the one first opened.
+      fireEvent.press(screen.getByRole("button", { name: "Up" }));
+      expect(screen.getByText("1 / 2")).toBeTruthy();
+      await waitFor(async () =>
+        expect(
+          JSON.parse(await AsyncStorage.getItem("dreamPhotos")).map((p) => p.id),
+        ).toEqual([2, 1]),
+      );
+
+      swipeTo(1);
+      expect(screen.getByText("2 / 2")).toBeTruthy();
+    });
+
+    it("closes the viewer when the photo is tapped", async () => {
+      await renderDream({ photos: PHOTOS });
+      fireEvent.press(await screen.findByLabelText("Dream photo 2 of 2"));
+      expect(screen.getByText("2 / 2")).toBeTruthy();
+      fireEvent.press(screen.getByLabelText("Photo 2 of 2"));
+      expect(screen.queryByText("2 / 2")).toBeNull();
     });
   });
 

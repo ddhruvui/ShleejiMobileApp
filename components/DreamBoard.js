@@ -1,4 +1,11 @@
-import React, { useState, useEffect, useMemo, useCallback, useImperativeHandle } from "react";
+import React, {
+  useState,
+  useEffect,
+  useMemo,
+  useCallback,
+  useImperativeHandle,
+  useRef,
+} from "react";
 import {
   StyleSheet,
   View,
@@ -8,6 +15,7 @@ import {
   Alert,
   Platform,
   Modal,
+  FlatList,
   useWindowDimensions,
 } from "react-native";
 import * as ImagePicker from "expo-image-picker";
@@ -23,7 +31,8 @@ const GAP = 10;
 /**
  * The vision board: a two-column masonry grid of device-library photos,
  * persisted locally in AsyncStorage ("dreamPhotos"), with a full-screen viewer
- * to reorder or remove a photo. Renders inline (no ScrollView of its own) so
+ * to reorder or remove a photo. The viewer is a horizontal pager: swipe left /
+ * right to move between photos in board order without closing it. Renders inline (no ScrollView of its own) so
  * the Dream tab can stack it above the affirmations.
  *
  * `addRef.current.openAdd()` opens the photo picker (the tab's "+" reaches in
@@ -35,6 +44,14 @@ export default function DreamBoard({ addRef, onCountChange, horizontalInset = sp
   const [expandedPhoto, setExpandedPhoto] = useState(null);
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
+  const pagerRef = useRef(null);
+  // The page the viewer's pager is scrolled to (-1 = not synced yet). Swipes
+  // update it from onScroll; a reorder or a fresh open scrolls the pager to
+  // the expanded photo when they disagree.
+  const pagerIndexRef = useRef(-1);
+  // Pages get an explicit height: flex stretch doesn't reach list cells on
+  // every platform (on web they collapse to 0).
+  const [pagerHeight, setPagerHeight] = useState(0);
   const imageWidth =
     (width - horizontalInset * 2 - GAP * (COLUMN_COUNT - 1)) / COLUMN_COUNT;
 
@@ -183,11 +200,16 @@ export default function DreamBoard({ addRef, onCountChange, horizontalInset = sp
     return { leftColumn: left, rightColumn: right };
   }, [photos, calculateImageHeight]);
 
+  const openPhoto = (item) => {
+    pagerIndexRef.current = -1;
+    setExpandedPhoto(item);
+  };
+
   const renderPhoto = (item) => (
     <Pressable
       key={item.id.toString()}
       style={({ pressed }) => [styles.photoContainer, pressed && styles.photoPressed]}
-      onPress={() => setExpandedPhoto(item)}
+      onPress={() => openPhoto(item)}
       accessibilityRole="imagebutton"
       accessibilityLabel={`Dream photo ${photos.indexOf(item) + 1} of ${photos.length}`}
     >
@@ -203,6 +225,42 @@ export default function DreamBoard({ addRef, onCountChange, horizontalInset = sp
     : -1;
   const isFirst = expandedIndex === 0;
   const isLast = expandedIndex === photos.length - 1;
+
+  // Keep the pager on the expanded photo when it moves under it (Up / Down
+  // swaps it with a neighbour) or the viewer has just opened.
+  useEffect(() => {
+    if (expandedIndex < 0 || expandedIndex === pagerIndexRef.current) return;
+    if (!pagerRef.current) return;
+    pagerIndexRef.current = expandedIndex;
+    pagerRef.current.scrollToOffset({ offset: expandedIndex * width, animated: false });
+  }, [expandedIndex, width]);
+
+  const onPagerScroll = (e) => {
+    const index = Math.round(e.nativeEvent.contentOffset.x / width);
+    if (index === pagerIndexRef.current || !photos[index]) return;
+    pagerIndexRef.current = index;
+    setExpandedPhoto(photos[index]);
+  };
+
+  // Tapping a photo closes the viewer, as tapping the backdrop does; the
+  // pressable itself stays out of the accessibility tree so the photo is read
+  // as an image (the Close button is the accessible way out).
+  const renderPage = ({ item, index }) => (
+    <Pressable
+      style={[styles.page, { width, height: pagerHeight }]}
+      onPress={() => setExpandedPhoto(null)}
+      accessible={false}
+    >
+      <Image
+        source={{ uri: item.uri }}
+        style={styles.expandedPhoto}
+        resizeMode="contain"
+        accessible
+        accessibilityRole="image"
+        accessibilityLabel={`Photo ${index + 1} of ${photos.length}`}
+      />
+    </Pressable>
+  );
 
   return (
     <>
@@ -256,11 +314,24 @@ export default function DreamBoard({ addRef, onCountChange, horizontalInset = sp
           </View>
 
           {expandedPhoto && (
-            <Image
-              source={{ uri: expandedPhoto.uri }}
-              style={styles.expandedPhoto}
-              resizeMode="contain"
-              pointerEvents="none"
+            <FlatList
+              ref={pagerRef}
+              style={styles.pager}
+              data={photos}
+              keyExtractor={(photo) => photo.id.toString()}
+              renderItem={renderPage}
+              extraData={pagerHeight}
+              onLayout={(e) => setPagerHeight(e.nativeEvent.layout.height)}
+              horizontal
+              pagingEnabled
+              showsHorizontalScrollIndicator={false}
+              getItemLayout={(_, index) => ({ length: width, offset: width * index, index })}
+              initialScrollIndex={Math.max(expandedIndex, 0)}
+              onScroll={onPagerScroll}
+              scrollEventThrottle={16}
+              initialNumToRender={1}
+              maxToRenderPerBatch={2}
+              windowSize={3}
             />
           )}
 
@@ -368,10 +439,16 @@ const styles = StyleSheet.create({
     ...type.callout,
     color: "rgba(255,255,255,0.75)",
   },
+  pager: {
+    flex: 1,
+    marginVertical: spacing.lg,
+  },
+  page: {
+    justifyContent: "center",
+  },
   expandedPhoto: {
     flex: 1,
     width: "100%",
-    marginVertical: spacing.lg,
   },
   photoControls: {
     flexDirection: "row",
