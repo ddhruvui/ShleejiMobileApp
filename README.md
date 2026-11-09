@@ -1,11 +1,10 @@
 # Shleeji
 
-Expo / React Native mobile app for TaskAtHand, with five tabs:
+Expo / React Native mobile app for TaskAtHand, with four tabs:
 
 | Tab       | What it does                                                                 |
 | --------- | ---------------------------------------------------------------------------- |
-| **Dream** | Vision board — add inspiration images from the photo library (masonry grid). The screen stays awake while this tab is open, including with a photo expanded |
-| **Affirmations** | Daily affirmations — a scrollable list of short lines to read every day; add, edit, delete (synced with the web app via the backend) |
+| **Dream** | The vision board first — inspiration images from the photo library (masonry grid; tap one to view it full screen, reorder or remove it) — followed by your **daily affirmations**, short lines to read every day (add, edit, delete; synced with the web app via the backend). The header "+" asks whether to add photos or an affirmation, and each section has its own "+". The screen stays awake while this tab is open, including with a photo expanded |
 | **Todo**  | Full TaskAtHand client — headers, tasks, ECDs, filters, and Insights         |
 | **Calls** | People to ring — Biweekly and Monthly sections; check off who you've called (the backend cron unchecks biweekly people on the 15th and everyone on the last day of the month); add, edit, delete (synced with the web app via the backend) |
 | **Counter** | Mada counter — taps accumulate; every 108 clicks converts to 1 mada        |
@@ -39,7 +38,7 @@ kit), so every tab looks and behaves the same way:
   one-line summary above it ("Monday, 9 November · 4 due today",
   "1 of 3 called"), sized to the phone's notch via safe-area insets.
 - **Tab bar** — a floating pill bar; only the active tab shows its name
-  (five full labels don't fit a phone), every tab keeps its full name for
+  (keeps the bar calm), every tab keeps its full name for
   screen readers.
 - **Rows** — tap a row to open it (edit), tick its checkbox to complete it,
   and use its **"⋯" button (or a long press)** for everything else: move up /
@@ -62,7 +61,9 @@ kit), so every tab looks and behaves the same way:
 This look is **mobile-only**: TaskAtHandFE keeps its own design. The small
 behaviours that came with it (tap a row to edit, the date shortcuts, the
 "N due today" summary, the Today/Tomorrow/Overdue chips) are not in the web
-app.
+app, and neither is the layout of tabs: the mobile app shows the dream board
+and the affirmations together on one **Dream** tab, while the web app keeps
+Affirmations as a view of its own.
 
 Talks to the deployed TaskAtHandBE API (`https://task-at-hand-be.vercel.app`,
 configured in `api/client.js`).
@@ -273,12 +274,11 @@ configured in `api/client.js`).
 
 ```
 Shleeji/
-├── App.js                     # Bottom-tab navigation (Dream / Affirmations / Todo / Calls / Counter)
+├── App.js                     # Bottom-tab navigation (Dream / Todo / Calls / Counter)
 ├── theme/index.js             # Design tokens: colours, type ramp, spacing, radii, shadows, tab-bar clearance
 ├── screens/
 │   ├── TodoScreen.js          # Todo tab incl. view chips + reminder sync
-│   ├── DreamScreen.js
-│   ├── AffirmationsScreen.js  # Daily affirmations list (backend-synced)
+│   ├── DreamScreen.js         # Dream tab: the board, then the affirmations
 │   ├── CallsScreen.js         # Biweekly/Monthly call list (backend-synced)
 │   └── CounterScreen.js       # Mada counter with the 108-bead ring
 ├── components/
@@ -289,7 +289,9 @@ Shleeji/
 │   ├── TaskCard.js  AddTaskModal.js  EditTaskModal.js
 │   ├── AddButton.js           # Shared icon-only "+" (sits beside the screen title)
 │   ├── HeaderModal.js  ConfirmModal.js  EcdPicker.js
-│   ├── AffirmationModal.js    # Add/edit (+ delete) affirmation modal
+│   ├── DreamBoard.js          # Vision board grid + full-screen photo viewer (AsyncStorage)
+│   ├── AffirmationsList.js    # Daily affirmations list (backend-synced)
+│   ├── AffirmationModal.js    # Add/edit (+ delete) affirmation sheet
 │   ├── CallModal.js           # Add/edit call modal (name + biweekly/monthly)
 │   ├── InsightsSection.js     # Insights view (stats + AI report)
 │   ├── VacationSection.js     # Vacation view (ranges + the re-date list)
@@ -341,7 +343,7 @@ npm run test:watch   # re-run on save
 
 Tests use `jest-expo` and React Native Testing Library and live in
 `__tests__/`: the UI kit, the ECD/date helpers, TaskCard and the task forms,
-every screen (Todo, Dream, Affirmations, Calls, Counter), every Todo panel
+every screen (Todo, Dream with its board and affirmations, Calls, Counter), every Todo panel
 (Insights, Events, Life Events, Goals, Projects, Vacation, On-call) and tab
 navigation. All API modules are mocked per test file, so **tests never
 touch a backend**. They query by role and accessible label, the way a
@@ -370,8 +372,9 @@ npm run publish -- "message" # OTA update to preview branch
   `/lifeevents` endpoints (it shows an error banner until then). The yearly
   todo task is created by the backend's cron on the event's day, and the
   cron marks the event done when it deletes the finished todo task.
-- The Affirmations tab requires the backend to be deployed with the
-  `/affirmations` endpoints (it shows an error state with Retry until then).
+- The Dream tab's affirmations require the backend to be deployed with the
+  `/affirmations` endpoints (that section shows an inline error with Retry
+  until then; the board above keeps working, since photos are local).
 - The Calls tab requires the backend to be deployed with the `/calls`
   endpoints (it shows an error state with Retry until then). The "called"
   checkmarks are reset by the backend's nightly cron — biweekly people on
@@ -379,7 +382,7 @@ npm run publish -- "message" # OTA update to preview branch
 - Counter and Dream data persist locally in AsyncStorage (not synced to the
   backend); Affirmations and Calls are stored in the backend and sync with
   the web app.
-- The Dream tab prevents the phone from auto-locking while it is the active
+- The Dream tab (board and affirmations) prevents the phone from auto-locking while it is the active
   tab (`expo-keep-awake`); normal auto-lock resumes as soon as you switch to
   another tab or leave the app.
 - The redesign added no native modules (no new Expo packages), so it ships as

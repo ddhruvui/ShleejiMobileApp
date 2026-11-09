@@ -13,16 +13,14 @@ import {
 
 /**
  * Floating tab bar. Only the active tab shows its name, inside a soft brand
- * pill — five full labels don't fit a phone ("Affirmations" truncated) and the
- * icons are distinct enough on their own. Every tab still carries its full
- * name as the accessible label.
+ * pill — the icons are distinct enough on their own and it keeps the bar
+ * calm. Every tab still carries its full name as the accessible label.
  *
  * Presses go through navigation.emit("tabPress") so App.js's screenListeners
  * (re-tapping an active tab returns to Todo) keep working.
  */
 export const TAB_ICONS = {
   Dream: ["sparkles", "sparkles-outline"],
-  Affirmations: ["heart", "heart-outline"],
   Todo: ["checkbox", "checkbox-outline"],
   Calls: ["call", "call-outline"],
   Counter: ["radio-button-on", "radio-button-off"],

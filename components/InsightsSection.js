@@ -63,7 +63,7 @@ export default function InsightsSection() {
   };
 
   if (loading) {
-    return <LoadingState label="Loading insights…" style={styles.loading} />;
+    return <LoadingState compact label="Loading insights…" />;
   }
 
   const hasArchiveData = stats && stats.eventCount > 0;
@@ -395,10 +395,6 @@ function ReportBlock({ title, items, tone, icon }) {
 }
 
 const styles = StyleSheet.create({
-  loading: {
-    flex: 0,
-    paddingVertical: spacing.xxxl,
-  },
   section: {
     marginBottom: spacing.xxl,
   },

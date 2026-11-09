@@ -158,7 +158,7 @@ export default function LifeEventsSection({ onTasksChanged, addRef }) {
   /* ── Render ── */
 
   if (loading) {
-    return <LoadingState label="Loading life events…" style={styles.loading} />;
+    return <LoadingState compact label="Loading life events…" />;
   }
 
   // Rows stay in the server's priority order (the user's own order, changed
@@ -310,10 +310,6 @@ export default function LifeEventsSection({ onTasksChanged, addRef }) {
 }
 
 const styles = StyleSheet.create({
-  loading: {
-    flex: 0,
-    paddingVertical: spacing.xxxl,
-  },
   list: {
     marginBottom: spacing.xxl,
   },

@@ -193,7 +193,7 @@ export default function VacationSection({ onTasksChanged, addRef, onStatusChange
   /* ── Render ── */
 
   if (loading) {
-    return <LoadingState label="Loading vacations…" style={styles.loading} />;
+    return <LoadingState compact label="Loading vacations…" />;
   }
 
   const today = status?.today ?? "";
@@ -394,10 +394,6 @@ export default function VacationSection({ onTasksChanged, addRef, onStatusChange
 }
 
 const styles = StyleSheet.create({
-  loading: {
-    flex: 0,
-    paddingVertical: spacing.xxxl,
-  },
   strong: {
     fontWeight: "700",
   },

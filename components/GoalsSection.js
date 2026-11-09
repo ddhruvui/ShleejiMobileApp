@@ -342,7 +342,7 @@ export default function GoalsSection({ onTasksChanged, addRef }) {
   /* ── Render ── */
 
   if (loading) {
-    return <LoadingState label="Loading goals…" style={styles.loading} />;
+    return <LoadingState compact label="Loading goals…" />;
   }
 
   return (
@@ -759,10 +759,6 @@ function StepRow({
 }
 
 const styles = StyleSheet.create({
-  loading: {
-    flex: 0,
-    paddingVertical: spacing.xxxl,
-  },
   card: {
     marginBottom: spacing.lg,
   },

@@ -4,10 +4,16 @@ import { Ionicons } from "@expo/vector-icons";
 import Button from "./Button";
 import { colors, radii, spacing, type } from "../../theme";
 
-/** Centered spinner with an optional caption. */
-export function LoadingState({ label = "Loading…", style }) {
+/**
+ * Centered spinner with an optional caption. Fills the area by default;
+ * `compact` sizes it to its content (for a section inside a scroll view).
+ */
+export function LoadingState({ label = "Loading…", style, compact = false }) {
   return (
-    <View style={[styles.center, style]} accessibilityLiveRegion="polite">
+    <View
+      style={[styles.center, compact ? styles.compact : styles.fill, style]}
+      accessibilityLiveRegion="polite"
+    >
       <ActivityIndicator size="large" color={colors.primary} />
       {label ? <Text style={styles.loadingText}>{label}</Text> : null}
     </View>
@@ -20,7 +26,7 @@ export function LoadingState({ label = "Loading…", style }) {
  */
 export function ErrorState({ message, hint = "Is the backend running?", onRetry, style }) {
   return (
-    <View style={[styles.center, style]}>
+    <View style={[styles.center, styles.fill, style]}>
       <View style={[styles.iconWrap, { backgroundColor: colors.dangerSoft }]}>
         <Ionicons name="cloud-offline-outline" size={30} color={colors.danger} />
       </View>
@@ -51,7 +57,10 @@ export function EmptyState({
   const bg = tone === "accent" ? colors.accentSoft : colors.primarySoft;
   const fg = tone === "accent" ? colors.accentText : colors.primary;
   return (
-    <View style={[styles.center, compact && styles.compact, style]}>
+    // Full-size states fill the screen; a compact one sizes to its content.
+    // (Never cancel `flex: 1` with `flex: 0` — on web that collapses the box
+    // to zero height and the content spills out.)
+    <View style={[styles.center, compact ? styles.compact : styles.fill, style]}>
       {icon ? (
         <View style={[styles.iconWrap, compact && styles.iconWrapSm, { backgroundColor: bg }]}>
           <Ionicons name={icon} size={compact ? 22 : 32} color={fg} />
@@ -73,15 +82,16 @@ export function EmptyState({
 }
 
 const styles = StyleSheet.create({
-  center: {
+  fill: {
     flex: 1,
+  },
+  center: {
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: spacing.xxxl,
     paddingVertical: spacing.xxxl,
   },
   compact: {
-    flex: 0,
     paddingVertical: spacing.xxl,
     paddingHorizontal: spacing.xl,
   },

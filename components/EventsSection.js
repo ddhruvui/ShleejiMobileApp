@@ -152,7 +152,7 @@ export default function EventsSection({ onTasksAdded, onViewTodo, addRef }) {
   /* ── Render ── */
 
   if (loading) {
-    return <LoadingState label="Loading events…" style={styles.loading} />;
+    return <LoadingState compact label="Loading events…" />;
   }
 
   const menuEvent = events.find((e) => e._id === menuId);
@@ -341,10 +341,6 @@ export default function EventsSection({ onTasksAdded, onViewTodo, addRef }) {
 }
 
 const styles = StyleSheet.create({
-  loading: {
-    flex: 0,
-    paddingVertical: spacing.xxxl,
-  },
   noticeText: {
     color: colors.successText,
   },

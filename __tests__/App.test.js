@@ -18,19 +18,23 @@ jest.mock("../utils/goalSync", () => ({
 const tab = (name) => screen.getByRole("tab", { name });
 
 describe("App navigation", () => {
-  it("opens on Dream with five named tabs, labelling only the active one", async () => {
+  it("opens on Dream with four named tabs, labelling only the active one", async () => {
     render(<App />);
     expect(await screen.findByText("Dream Board")).toBeTruthy();
-    for (const name of ["Dream", "Affirmations", "Todo", "Calls", "Counter"]) {
+    await screen.findByText("No affirmations yet"); // let the Dream tab finish loading
+    for (const name of ["Dream", "Todo", "Calls", "Counter"]) {
       expect(tab(name)).toBeTruthy();
     }
+    // Affirmations live on the Dream tab now, not in a tab of their own
+    expect(screen.queryByRole("tab", { name: "Affirmations" })).toBeNull();
+    expect(screen.getAllByRole("tab")).toHaveLength(4);
     expect(tab("Dream")).toBeSelected();
-    expect(screen.queryByText("Affirmations")).toBeNull(); // inactive: icon only
+    expect(screen.queryByText("Counter")).toBeNull(); // inactive: icon only
   });
 
   it("switches tabs, and re-tapping the active tab returns to Todo", async () => {
     render(<App />);
-    await screen.findByText("Dream Board");
+    await screen.findByText("No affirmations yet"); // let the Dream tab finish loading
     fireEvent.press(tab("Calls"));
     expect(await screen.findByText("No calls yet")).toBeTruthy();
     expect(tab("Calls")).toBeSelected();

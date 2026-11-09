@@ -422,7 +422,7 @@ export default function ProjectsSection({ onTasksChanged, addRef }) {
   /* ── Render ── */
 
   if (loading) {
-    return <LoadingState label="Loading projects…" style={styles.loading} />;
+    return <LoadingState compact label="Loading projects…" />;
   }
 
   return (
@@ -770,9 +770,6 @@ function ProjectTaskRow({
 }
 
 const styles = StyleSheet.create({
-  loading: {
-    flex: 0,
-  },
   card: {
     marginBottom: spacing.lg,
   },

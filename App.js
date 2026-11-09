@@ -5,7 +5,6 @@ import { StatusBar } from "expo-status-bar";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import DreamScreen from "./screens/DreamScreen";
-import AffirmationsScreen from "./screens/AffirmationsScreen";
 import TodoScreen from "./screens/TodoScreen";
 import CallsScreen from "./screens/CallsScreen";
 import CounterScreen from "./screens/CounterScreen";
@@ -46,7 +45,6 @@ export default function App() {
           })}
         >
           <Tab.Screen name="Dream" component={DreamScreen} />
-          <Tab.Screen name="Affirmations" component={AffirmationsScreen} />
           <Tab.Screen name="Todo" component={TodoScreen} />
           <Tab.Screen name="Calls" component={CallsScreen} />
           <Tab.Screen name="Counter" component={CounterScreen} />

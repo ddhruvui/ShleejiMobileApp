@@ -115,7 +115,7 @@ export default function OnCallSection({ addRef, onShiftsChanged }) {
   };
 
   if (loading) {
-    return <LoadingState label="Loading on-call shifts…" style={styles.loading} />;
+    return <LoadingState compact label="Loading on-call shifts…" />;
   }
 
   const today = dateKeyOf(now);
@@ -321,10 +321,6 @@ function GapRow({ gap, now }) {
 }
 
 const styles = StyleSheet.create({
-  loading: {
-    flex: 0,
-    paddingVertical: spacing.xxxl,
-  },
   agenda: {
     marginBottom: spacing.xxl,
     gap: spacing.sm,
