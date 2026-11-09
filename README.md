@@ -47,12 +47,18 @@ configured in `api/client.js`).
   By Date is a todo-list filter, stays active while a panel is open, and
   applies again when the panel closes.
 - **Events** — reusable task bundles (e.g. "Burger Night" with its shopping
-  list). "Add to todo" opens a date picker plus a checklist of the event's
-  tasks (all selected by default, tap to unmark); confirming adds the selected
-  tasks, dated for the chosen day, under a header named after the event
-  (reused if it already exists, so later additions join it). Each task row
-  also has a per-task quick add. Templates are never consumed, so an event
-  can be scheduled again and again
+  list), shown as an expandable list (same as the web app): each row has the
+  event name, a task count, a one-line preview when collapsed, edit/delete
+  icons and a green "+ Todo" button (the web app's "Add to todo", shortened so
+  long names fit on a phone); tapping a row shows its numbered
+  tasks. The first event starts open, and an event you add or edit opens.
+  "Add to todo" opens Today / Tomorrow / Saturday date shortcuts and a
+  date picker plus a checklist of the event's tasks (all selected by default,
+  tap to unmark); confirming adds the selected tasks, dated for the chosen
+  day, under a header named after the event (reused if it already exists, so
+  later additions join it). The success notice has a "View in todo" link that
+  closes the Events panel. Each task row also has a per-task quick add.
+  Templates are never consumed, so an event can be scheduled again and again
 - **Life Events** — annually recurring dates (e.g. "Wife's birthday" on
   7 Mar), listed in priority order with move up/down arrows (a server-side
   contiguous priority, like headers and projects). Each row shows a done

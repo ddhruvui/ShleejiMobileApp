@@ -20,11 +20,14 @@ import ScheduleEventModal from "./ScheduleEventModal";
 import ConfirmModal from "./ConfirmModal";
 import { formatDateKey } from "../utils/ecd";
 
-export default function EventsSection({ onTasksAdded, addRef }) {
+export default function EventsSection({ onTasksAdded, onViewTodo, addRef }) {
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [notice, setNotice] = useState(null);
+  // Ids of the events whose task list is open (mirrors the web FE's
+  // accordion): the first event starts open, an added/edited event opens.
+  const [expanded, setExpanded] = useState(new Set());
 
   // Modal states
   const [eventModalState, setEventModalState] = useState(null);
@@ -41,6 +44,9 @@ export default function EventsSection({ onTasksAdded, addRef }) {
     try {
       const all = await eventsApi.getAll();
       setEvents(all);
+      // Seed only when nothing is open yet so a reload never collapses rows
+      if (all.length > 0)
+        setExpanded((prev) => (prev.size > 0 ? prev : new Set([all[0]._id])));
       setError(null);
     } catch (err) {
       setError(err.message);
@@ -53,15 +59,27 @@ export default function EventsSection({ onTasksAdded, addRef }) {
     loadEvents();
   }, [loadEvents]);
 
+  const expand = (id) => setExpanded((prev) => new Set(prev).add(id));
+
+  const toggleExpanded = (id) =>
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+
   /* ── Event CRUD ── */
 
   const handleSaveEvent = async (draft) => {
     if (!eventModalState) return;
     try {
       if (eventModalState.mode === "add") {
-        await eventsApi.create(draft);
+        const created = await eventsApi.create(draft);
+        if (created?._id) expand(created._id);
       } else {
         await eventsApi.update(eventModalState.event._id, draft);
+        expand(eventModalState.event._id);
       }
       await loadEvents();
       setEventModalState(null);
@@ -141,70 +159,132 @@ export default function EventsSection({ onTasksAdded, addRef }) {
       {notice && (
         <View style={styles.noticeBar}>
           <Text style={styles.noticeText}>{notice}</Text>
+          {onViewTodo && (
+            <TouchableOpacity
+              onPress={onViewTodo}
+              style={styles.noticeLink}
+              accessibilityRole="button"
+            >
+              <Text style={styles.noticeLinkText}>View in todo</Text>
+            </TouchableOpacity>
+          )}
           <TouchableOpacity onPress={() => setNotice(null)}>
             <Ionicons name="close" size={18} color="#1a7f37" />
           </TouchableOpacity>
         </View>
       )}
 
-      {events.map((event) => (
-        <View key={event._id} style={styles.section}>
-          <View style={styles.headerRow}>
-            <Text style={styles.headerName} numberOfLines={1}>
-              {event.name}
-            </Text>
-            <View style={styles.headerActions}>
-              <TouchableOpacity
-                style={styles.headerBtn}
-                onPress={() => setEventModalState({ mode: "edit", event })}
-              >
-                <Ionicons name="pencil" size={16} color="#656d76" />
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.headerBtn}
-                onPress={() => setDeleteTarget(event)}
-              >
-                <Ionicons name="trash-outline" size={16} color="#e74c3c" />
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.scheduleBtn}
-                onPress={() => setScheduleState({ event })}
-                activeOpacity={0.7}
-              >
-                <Ionicons name="add" size={16} color="#656d76" />
-                <Text style={styles.scheduleBtnText}>Add to todo</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-
-          <View style={styles.taskList}>
-            {event.tasks.map((task, i) => (
+      {events.length > 0 && (
+        <View style={styles.list}>
+          {events.map((event, idx) => {
+            const isOpen = expanded.has(event._id);
+            const count = event.tasks.length;
+            return (
               <View
-                key={i}
-                style={[
-                  styles.taskRow,
-                  i === event.tasks.length - 1 && styles.taskRowLast,
-                ]}
+                key={event._id}
+                style={[styles.event, idx > 0 && styles.eventDivider]}
               >
-                <Text style={styles.taskName}>{task}</Text>
-                <TouchableOpacity
-                  style={styles.taskAddBtn}
-                  onPress={() =>
-                    setScheduleState({ event, initialSelected: [task] })
-                  }
-                >
-                  <Ionicons name="add" size={16} color="#656d76" />
-                </TouchableOpacity>
+                <View style={styles.eventHead}>
+                  <TouchableOpacity
+                    style={styles.toggle}
+                    onPress={() => toggleExpanded(event._id)}
+                    accessibilityRole="button"
+                    accessibilityState={{ expanded: isOpen }}
+                    accessibilityLabel={`${isOpen ? "Collapse" : "Expand"} ${event.name}`}
+                    activeOpacity={0.6}
+                  >
+                    <Ionicons
+                      name={isOpen ? "chevron-down" : "chevron-forward"}
+                      size={16}
+                      color="#656d76"
+                    />
+                    <View style={styles.eventText}>
+                      <View style={styles.eventTitleRow}>
+                        <Text style={styles.eventName} numberOfLines={1}>
+                          {event.name}
+                        </Text>
+                        <View style={styles.countPill}>
+                          <Text style={styles.countText}>
+                            {count} task{count === 1 ? "" : "s"}
+                          </Text>
+                        </View>
+                      </View>
+                      {!isOpen && count > 0 && (
+                        <Text style={styles.preview} numberOfLines={1}>
+                          {event.tasks.join(" · ")}
+                        </Text>
+                      )}
+                    </View>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={styles.iconBtn}
+                    onPress={() => setEventModalState({ mode: "edit", event })}
+                    accessibilityLabel={`Edit event ${event.name}`}
+                  >
+                    <Ionicons name="pencil" size={16} color="#656d76" />
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.iconBtn}
+                    onPress={() => setDeleteTarget(event)}
+                    accessibilityLabel={`Delete event ${event.name}`}
+                  >
+                    <Ionicons name="trash-outline" size={16} color="#656d76" />
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.scheduleBtn}
+                    onPress={() => setScheduleState({ event })}
+                    accessibilityLabel={`Add ${event.name} to todo`}
+                    activeOpacity={0.8}
+                  >
+                    <Ionicons name="add" size={15} color="#ffffff" />
+                    {/* Short label so long event names fit on a phone; the
+                        accessibility label still reads "Add … to todo" */}
+                    <Text style={styles.scheduleBtnText}>Todo</Text>
+                  </TouchableOpacity>
+                </View>
+
+                {isOpen && (
+                  <View style={styles.taskList}>
+                    {event.tasks.map((task, i) => (
+                      <View
+                        key={i}
+                        style={[
+                          styles.taskRow,
+                          i === count - 1 && styles.taskRowLast,
+                        ]}
+                      >
+                        <Text style={styles.taskNum}>{i + 1}</Text>
+                        <Text style={styles.taskName}>{task}</Text>
+                        <TouchableOpacity
+                          style={styles.taskAddBtn}
+                          onPress={() =>
+                            setScheduleState({ event, initialSelected: [task] })
+                          }
+                          accessibilityLabel={`Add "${task}" to todo`}
+                        >
+                          <Text style={styles.taskAddText}>+ Add</Text>
+                        </TouchableOpacity>
+                      </View>
+                    ))}
+                  </View>
+                )}
               </View>
-            ))}
-          </View>
+            );
+          })}
         </View>
-      ))}
+      )}
 
       {events.length === 0 && (
         <Text style={styles.emptyText}>
           No events yet — add one! An event is a reusable bundle of tasks (e.g.
           "Burger Night") you can drop into your todo for any date.
+        </Text>
+      )}
+      {events.length > 0 && (
+        <Text style={styles.hint}>
+          An event is a reusable bundle of tasks you can drop into your todo for
+          any date.
         </Text>
       )}
 
@@ -280,68 +360,108 @@ const styles = StyleSheet.create({
     flex: 1,
     marginRight: 8,
   },
-  section: {
-    marginBottom: 24,
-    borderWidth: 1,
-    borderColor: "#eaeef2",
-    borderRadius: 10,
-    backgroundColor: "#fff",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
-    overflow: "hidden",
+  noticeLink: {
+    marginRight: 10,
   },
-  headerRow: {
+  noticeLinkText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#1a7f37",
+    textDecorationLine: "underline",
+  },
+  // Accordion list in the web FE's palette: purple is the Events identity
+  // color, green the primary action, red stays on the delete confirm.
+  list: {
+    borderWidth: 1,
+    borderColor: "#d0d7de",
+    borderRadius: 8,
+    backgroundColor: "#fff",
+    overflow: "hidden",
+    marginBottom: 12,
+  },
+  event: {},
+  eventDivider: {
+    borderTopWidth: 1,
+    borderTopColor: "#d0d7de",
+  },
+  eventHead: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: "#eaeef2",
-    backgroundColor: "#f6f8fa",
+    paddingVertical: 10,
+    paddingLeft: 8,
+    paddingRight: 10,
+    minHeight: 56,
   },
-  headerName: {
+  toggle: {
     flex: 1,
-    fontSize: 18,
+    minWidth: 0,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingVertical: 4,
+    paddingRight: 4,
+  },
+  eventText: {
+    flex: 1,
+    minWidth: 0,
+  },
+  eventTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  eventName: {
+    flexShrink: 1,
+    fontSize: 16,
     fontWeight: "600",
     color: "#1f2328",
   },
-  headerActions: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 2,
+  countPill: {
+    borderWidth: 1,
+    borderColor: "#d0d7de",
+    borderRadius: 999,
+    paddingHorizontal: 6,
+    paddingVertical: 1,
   },
-  headerBtn: {
-    padding: 6,
+  countText: {
+    fontSize: 11,
+    fontWeight: "600",
+    color: "#656d76",
+  },
+  preview: {
+    marginTop: 2,
+    fontSize: 13,
+    color: "#656d76",
+  },
+  iconBtn: {
+    padding: 7,
     borderRadius: 6,
   },
   scheduleBtn: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 4,
-    backgroundColor: "#fff",
-    borderWidth: 1,
-    borderColor: "#d0d7de",
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-    borderRadius: 8,
+    gap: 2,
+    backgroundColor: "#1a7f37",
+    paddingVertical: 7,
+    paddingLeft: 6,
+    paddingRight: 9,
+    borderRadius: 6,
     marginLeft: 4,
   },
   scheduleBtnText: {
     fontSize: 12,
     fontWeight: "600",
-    color: "#656d76",
+    color: "#ffffff",
   },
   taskList: {
-    paddingHorizontal: 14,
+    paddingLeft: 30,
+    paddingRight: 12,
+    paddingBottom: 8,
   },
   taskRow: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-    gap: 12,
+    gap: 10,
     paddingVertical: 8,
     borderBottomWidth: 1,
     borderBottomColor: "#eaeef2",
@@ -349,19 +469,34 @@ const styles = StyleSheet.create({
   taskRowLast: {
     borderBottomWidth: 0,
   },
+  taskNum: {
+    width: 20,
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#8250df",
+    fontVariant: ["tabular-nums"],
+  },
   taskName: {
     fontSize: 15,
     color: "#1f2328",
     flex: 1,
   },
   taskAddBtn: {
-    width: 26,
-    height: 26,
-    borderRadius: 6,
     borderWidth: 1,
     borderColor: "#d0d7de",
-    justifyContent: "center",
-    alignItems: "center",
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  taskAddText: {
+    fontSize: 12,
+    fontWeight: "500",
+    color: "#1f2328",
+  },
+  hint: {
+    fontSize: 13,
+    color: "#656d76",
+    marginBottom: 16,
   },
   emptyText: {
     textAlign: "center",

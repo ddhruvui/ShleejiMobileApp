@@ -10,6 +10,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import DateTimePicker from "@react-native-community/datetimepicker";
+import { addDaysToDateKey, formatDateKey } from "../utils/ecd";
 
 // Format Date to YYYY-MM-DD (local time, matches EcdPicker)
 function formatDateToISO(date) {
@@ -17,6 +18,25 @@ function formatDateToISO(date) {
   const month = String(date.getMonth() + 1).padStart(2, "0");
   const day = String(date.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
+}
+
+/** Quick date picks: today, tomorrow and the next Saturday that is not
+ * already one of those two. Mirrors the web FE's ScheduleEventModal. */
+function dateShortcuts() {
+  const today = formatDateToISO(new Date());
+  const weekday = new Date().getDay();
+  let toSaturday = (6 - weekday + 7) % 7;
+  if (toSaturday < 2) toSaturday += 7;
+  return [
+    { label: "Today", key: today },
+    { label: "Tomorrow", key: addDaysToDateKey(today, 1) },
+    { label: "Saturday", key: addDaysToDateKey(today, toSaturday) },
+  ];
+}
+
+/** "Mon, Nov 9, 2026" → "Nov 9" for the shortcut chips. */
+function shortDate(key) {
+  return formatDateKey(key).replace(/, \d{4}$/, "").replace(/^\w+, /, "");
 }
 
 export default function ScheduleEventModal({
@@ -115,6 +135,40 @@ export default function ScheduleEventModal({
 
             {/* Date */}
             <Text style={styles.label}>Date</Text>
+            <View style={styles.shortcutRow}>
+              {dateShortcuts().map((s) => {
+                const active = s.key === date;
+                return (
+                  <TouchableOpacity
+                    key={s.label}
+                    style={[styles.shortcut, active && styles.shortcutActive]}
+                    onPress={() => {
+                      setDate(s.key);
+                      setShowDatePicker(false);
+                    }}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: active }}
+                  >
+                    <Text
+                      style={[
+                        styles.shortcutText,
+                        active && styles.shortcutTextActive,
+                      ]}
+                    >
+                      {s.label}{" "}
+                      <Text
+                        style={[
+                          styles.shortcutDate,
+                          active && styles.shortcutTextActive,
+                        ]}
+                      >
+                        {shortDate(s.key)}
+                      </Text>
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
             <TouchableOpacity
               style={styles.dateSelectorBtn}
               onPress={() => setShowDatePicker(true)}
@@ -230,6 +284,36 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     textTransform: "uppercase",
     letterSpacing: 0.5,
+  },
+  shortcutRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 6,
+    marginBottom: 10,
+  },
+  shortcut: {
+    borderWidth: 1,
+    borderColor: "#d0d7de",
+    borderRadius: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    backgroundColor: "#ffffff",
+  },
+  shortcutActive: {
+    borderColor: "#1a7f37",
+    backgroundColor: "rgba(26, 127, 55, 0.12)",
+  },
+  shortcutText: {
+    fontSize: 13,
+    fontWeight: "500",
+    color: "#1f2328",
+  },
+  shortcutDate: {
+    fontWeight: "400",
+    color: "#656d76",
+  },
+  shortcutTextActive: {
+    color: "#1a7f37",
   },
   dateSelectorBtn: {
     flexDirection: "row",

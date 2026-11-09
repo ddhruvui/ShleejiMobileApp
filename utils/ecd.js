@@ -85,6 +85,20 @@ export function getEcdDateKey(ecd) {
 }
 
 /**
+ * Shift a "YYYY-MM-DD" key by a number of calendar days. Parsed into
+ * components so it is timezone safe; month and year roll over through the
+ * Date constructor. Mirrors the web FE's `addDaysToDateKey`.
+ */
+export function addDaysToDateKey(key, days) {
+  const [y, mo, d] = key.split("-").map((n) => parseInt(n, 10));
+  const date = new Date(y, mo - 1, d + days);
+  const yy = date.getFullYear();
+  const mm = String(date.getMonth() + 1).padStart(2, "0");
+  const dd = String(date.getDate()).padStart(2, "0");
+  return `${yy}-${mm}-${dd}`;
+}
+
+/**
  * Formats a YYYY-MM-DD key into a readable heading, e.g. "Fri, Jun 26, 2026".
  * Parsed from components to avoid timezone shifts.
  */

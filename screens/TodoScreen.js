@@ -705,7 +705,11 @@ export default function TodoScreen() {
 
         {/* Events view */}
         {!insightsMode && eventsMode && (
-          <EventsSection onTasksAdded={loadAll} addRef={eventsAddRef} />
+          <EventsSection
+            onTasksAdded={loadAll}
+            onViewTodo={() => setEventsMode(false)}
+            addRef={eventsAddRef}
+          />
         )}
 
         {/* Life Events view */}
