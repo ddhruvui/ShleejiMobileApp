@@ -18,7 +18,8 @@ Every tab's add action is a single **"+" button in the blue title bar**, beside
 the screen title — there are no labelled "+ Add X" buttons. On **Todo** that one
 button follows the view that is showing: it adds a header in the todo and By
 Date lists, a project in Projects, a goal in Goals, an event in Events, a life
-event in Life Events, a vacation in Vacation, and is hidden in Insights
+event in Life Events, a vacation in Vacation, an on-call shift in On-call,
+and is hidden in Insights
 (nothing to add there).
 **Counter** is the exception — it keeps its original pair of labelled white
 buttons, **Reset** and **+ Add**, stacked at the right of its blue header.
@@ -40,7 +41,8 @@ configured in `api/client.js`).
   then past dates, then future dates, with thick dividers between the
   present, past and future sections), **Insights** (see below),
   **Events** (see below), **Life Events** (see below), **Goals** (see below),
-  **Projects** (see below), **Vacation** (see below). The panel toggles
+  **Projects** (see below), **Vacation** (see below), **On-call** (see
+  below). The panel toggles
   (everything except By Date)
   are mutually exclusive: tapping one opens that view and deactivates
   whichever was open, and tapping the active one returns to the todo list.
@@ -154,6 +156,18 @@ configured in `api/client.js`).
   active vacation shows a banner above every Todo view** (except the Vacation view itself, which has its own fuller one) (booking time off and
   forgetting is the failure mode this feature actually has), and **daily
   reminders are silenced** for booked days
+- **On-call** — your on-call shifts (date, start–end, primary or secondary),
+  **kept separate: they never change a task**. A compact Mon–Sun timeline
+  (‹ › between weeks, the week's primary/secondary hours) shows each shift as
+  a bar — **primary solid red, secondary a dashed red outline** — with an
+  overnight shift split across the two days and a line marking now; below it,
+  the upcoming shifts with edit/delete. The title-bar "+" opens a bottom sheet
+  whose quick-add field takes the shorthand `11/16 9-22` (add `s` for
+  secondary; `22-6` runs past midnight; `24` is a legal end) and fills the
+  type, date and time fields; Primary is the default. Ended shifts disappear
+  the minute they end and the backend deletes them overnight — there is no
+  past list. **A running shift shows an "on call · Xh left" banner above every
+  Todo view.** Same behaviour as the web app's On-call view
 - **What vacation changes** — it's a lens on the history, not a pause button:
   the backend cron runs unchanged, and anything ticked off while away still
   counts. What changes is how the archive is read — a missed day on vacation is
@@ -227,6 +241,8 @@ Shleeji/
 │   ├── InsightsSection.js     # Insights view (stats + AI report)
 │   ├── VacationSection.js     # Vacation view (ranges + the re-date list)
 │   ├── VacationModal.js       # Book/edit a vacation (two inclusive dates)
+│   ├── OnCallSection.js       # On-call view (week timeline + upcoming shifts)
+│   ├── OnCallModal.js         # Add/edit shift bottom sheet (quick add, type, times)
 │   ├── EventsSection.js  EventModal.js  ScheduleEventModal.js   # Events view
 │   ├── LifeEventsSection.js  LifeEventModal.js                   # Life Events view
 │   ├── GoalsSection.js  GoalModal.js  AddStepModal.js            # Goals view
@@ -242,12 +258,14 @@ Shleeji/
 │   ├── goals.js               # /goals CRUD (habit backlogs)
 │   ├── projects.js            # /projects CRUD (long term projects)
 │   ├── vacations.js           # /vacations CRUD + /status + the re-date task list
+│   ├── oncall.js              # /oncall CRUD (on-call shifts; never affects tasks)
 │   └── insights.js            # /insights/stats, /insights/latest, /insights/generate
 └── utils/
     ├── ecd.js                 # ECD due-today/date-key helpers
     ├── goalSync.js            # goal step ↔ todo sync + habit-day helpers
     ├── projectSync.js         # project task ↔ todo sync helpers
     ├── lifeEventSync.js       # life event ↔ todo sync helpers
+    ├── oncall.js              # on-call shift maths + quick-add parser (mirrors web utils/oncall.ts)
     └── notifications.js       # 8:30 AM / 4:00 PM daily reminders (silent on vacation days)
 ```
 

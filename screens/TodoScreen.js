@@ -23,9 +23,12 @@ import LifeEventsSection from "../components/LifeEventsSection";
 import GoalsSection from "../components/GoalsSection";
 import ProjectsSection from "../components/ProjectsSection";
 import VacationSection from "../components/VacationSection";
+import OnCallSection from "../components/OnCallSection";
 import { getEcdDateKey, formatDateKey, todayDateKey } from "../utils/ecd";
 import { syncDailyReminders } from "../utils/notifications";
 import * as vacationsApi from "../api/vacations";
+import * as onCallApi from "../api/oncall";
+import { activeShift, formatDuration, minutesLeft } from "../utils/oncall";
 import {
   fetchOneStepStreaks,
   isOneStepHeaderName,
@@ -62,6 +65,12 @@ export default function TodoScreen() {
   const [goalsMode, setGoalsMode] = useState(false);
   const [projectsMode, setProjectsMode] = useState(false);
   const [vacationMode, setVacationMode] = useState(false);
+  const [onCallMode, setOnCallMode] = useState(false);
+
+  // On-call shifts are screen-level so the "on call now" banner shows from
+  // every view (mirrors the web FE). A record only — never touches tasks.
+  const [onCallShifts, setOnCallShifts] = useState([]);
+  const [clock, setClock] = useState(() => new Date());
 
   // Vacation status is screen-level, not panel-level, on purpose: the most
   // likely real-world failure of this feature is booking time off and
@@ -81,6 +90,7 @@ export default function TodoScreen() {
     setGoalsMode,
     setProjectsMode,
     setVacationMode,
+    setOnCallMode,
   ];
   const togglePanelMode = (setter) => {
     panelModeSetters.forEach((s) => {
@@ -101,6 +111,7 @@ export default function TodoScreen() {
   const goalsAddRef = useRef(null);
   const projectsAddRef = useRef(null);
   const vacationAddRef = useRef(null);
+  const onCallAddRef = useRef(null);
 
   /* ── Load all headers and their tasks ── */
   const loadAll = useCallback(async () => {
@@ -150,11 +161,29 @@ export default function TodoScreen() {
     }
   }, []);
 
+  /** On-call shifts for the banner. A failure just hides the banner. */
+  const refreshOnCall = useCallback(async () => {
+    try {
+      setOnCallShifts(await onCallApi.getAll());
+    } catch {
+      setOnCallShifts([]);
+    }
+  }, []);
+
   useEffect(() => {
     loadAll();
     refreshVacations();
     refreshStreaks();
-  }, [loadAll, refreshVacations, refreshStreaks]);
+    refreshOnCall();
+  }, [loadAll, refreshVacations, refreshStreaks, refreshOnCall]);
+
+  // The banner's "time left" and its disappearance follow the device clock.
+  useEffect(() => {
+    const id = setInterval(() => setClock(new Date()), 60000);
+    return () => clearInterval(id);
+  }, []);
+
+  const currentShift = activeShift(onCallShifts, clock);
 
   /* ── Keep the 8:30 AM / 4:00 PM daily reminders in sync with task data ──
      Reminders are silenced on booked days: being nagged by your todo app on
@@ -492,6 +521,11 @@ export default function TodoScreen() {
         label: "Add vacation",
         onPress: () => vacationAddRef.current?.openAdd(),
       };
+    if (onCallMode)
+      return {
+        label: "Add on-call shift",
+        onPress: () => onCallAddRef.current?.openAdd(),
+      };
     return {
       label: "Add header",
       onPress: () => setHeaderModalState({ mode: "add" }),
@@ -651,6 +685,22 @@ export default function TodoScreen() {
             Vacation
           </Text>
         </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.toggleBtn, onCallMode && styles.toggleBtnActive]}
+          onPress={() => togglePanelMode(setOnCallMode)}
+          activeOpacity={0.7}
+        >
+          <Ionicons
+            name="notifications-outline"
+            size={16}
+            color={onCallMode ? "#1e88e5" : "#656d76"}
+          />
+          <Text
+            style={[styles.toggleText, onCallMode && styles.toggleTextActive]}
+          >
+            On-call
+          </Text>
+        </TouchableOpacity>
       </View>
 
       <ScrollView
@@ -700,6 +750,31 @@ export default function TodoScreen() {
           </TouchableOpacity>
         )}
 
+        {/* On call right now — every view, including On-call. Blue like the
+            vacation banner, with a red edge (dashed for secondary). */}
+        {currentShift && (
+          <TouchableOpacity
+            style={[
+              styles.vacationBanner,
+              styles.onCallBanner,
+              currentShift.type === "secondary" && styles.onCallBannerSecondary,
+            ]}
+            activeOpacity={0.7}
+            disabled={onCallMode}
+            onPress={() => togglePanelMode(setOnCallMode)}
+          >
+            <Ionicons name="notifications" size={16} color="#cf222e" />
+            <Text style={styles.vacationBannerText}>
+              <Text style={[styles.vacationBannerStrong, styles.onCallBannerType]}>
+                {currentShift.type === "primary" ? "Primary" : "Secondary"}
+              </Text>{" "}
+              on call · until{" "}
+              {currentShift.end === "24:00" ? "midnight" : currentShift.end} ·{" "}
+              {formatDuration(minutesLeft(currentShift, clock))} left
+            </Text>
+          </TouchableOpacity>
+        )}
+
         {/* Insights view */}
         {insightsMode && <InsightsSection />}
 
@@ -740,6 +815,7 @@ export default function TodoScreen() {
           !lifeEventsMode &&
           !goalsMode &&
           !projectsMode &&
+          !onCallMode &&
           vacationMode && (
             <VacationSection
               addRef={vacationAddRef}
@@ -751,6 +827,11 @@ export default function TodoScreen() {
             />
           )}
 
+        {/* On-call view */}
+        {onCallMode && (
+          <OnCallSection addRef={onCallAddRef} onShiftsChanged={refreshOnCall} />
+        )}
+
         {/* Headers */}
         {!insightsMode &&
           !eventsMode &&
@@ -758,6 +839,7 @@ export default function TodoScreen() {
           !goalsMode &&
           !projectsMode &&
           !vacationMode &&
+          !onCallMode &&
           !byDateMode &&
           headers.map((header, idx) => {
             const visibleTasks = header.tasks;
@@ -881,6 +963,7 @@ export default function TodoScreen() {
           !goalsMode &&
           !projectsMode &&
           !vacationMode &&
+          !onCallMode &&
           !byDateMode &&
           headers.length === 0 && (
             <Text style={styles.emptyText}>No headers yet — add one!</Text>
@@ -894,6 +977,7 @@ export default function TodoScreen() {
           !goalsMode &&
           !projectsMode &&
           !vacationMode &&
+          !onCallMode &&
           byDateMode &&
           byDateSections.map((section, sectionIdx) => (
             <React.Fragment key={section.key}>
@@ -936,6 +1020,7 @@ export default function TodoScreen() {
           !goalsMode &&
           !projectsMode &&
           !vacationMode &&
+          !onCallMode &&
           byDateMode &&
           byDateSections.length === 0 && (
             <Text style={styles.emptyText}>No dated tasks to show.</Text>
@@ -1103,6 +1188,9 @@ const styles = StyleSheet.create({
     lineHeight: 19,
   },
   vacationBannerStrong: { fontWeight: "700" },
+  onCallBanner: { borderLeftColor: "#cf222e" },
+  onCallBannerSecondary: { borderStyle: "dashed" },
+  onCallBannerType: { color: "#cf222e" },
   actionErrorBar: {
     flexDirection: "row",
     alignItems: "center",
